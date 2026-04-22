@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light-mode">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>医疗RAG智能问答系统</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .auth-mask {
+            position: absolute;
+            inset: 0;
+            background: rgba(241, 245, 249, 0.78);
+            backdrop-filter: blur(4px);
+        }
+
+        .auth-card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+            padding: 32px 28px 24px;
+            box-sizing: border-box;
+        }
+
+        .auth-title {
+            margin: 0 0 8px;
+            font-size: 34px;
+            font-weight: 800;
+            color: #172033;
+            line-height: 1.25;
+        }
+
+        .auth-subtitle {
+            margin: 0 0 24px;
+            font-size: 16px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        .auth-tabs {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .auth-tab-btn {
+            flex: 1;
+            border: none;
+            background: #e8edf8;
+            color: #4b5563;
+            padding: 12px 14px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .auth-tab-btn.active {
+            background: #2f66e0;
+            color: #ffffff;
+        }
+
+        .auth-panel {
+            display: block;
+        }
+
+        .auth-form-group {
+            margin-bottom: 14px;
+        }
+
+        .auth-form-group input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 14px 16px;
+            border: 1px solid #d7dce5;
+            border-radius: 14px;
+            outline: none;
+            font-size: 16px;
+            background: #f8fafc;
+        }
+
+        .auth-form-group input:focus {
+            border-color: #2f66e0;
+            background: #ffffff;
+        }
+
+        .auth-submit-btn {
+            width: 100%;
+            border: none;
+            background: #2f66e0;
+            color: #ffffff;
+            padding: 14px 16px;
+            border-radius: 14px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .auth-submit-btn:hover {
+            background: #1f55cb;
+        }
+
+        .auth-message {
+            min-height: 24px;
+            margin-top: 14px;
+            font-size: 14px;
+            color: #dc2626;
+            line-height: 1.6;
+        }
+
+        /* 关键修复：恢复主界面整体布局 */
+        #app-screen {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-container {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 登录 / 注册界面 -->
+    <div id="auth-screen" class="auth-screen">
+        <div class="auth-mask"></div>
+
+        <div class="auth-card">
+            <h2 class="auth-title">医疗RAG智能问答系统</h2>
+            <p class="auth-subtitle">请先登录后再进入知识库与问答工作台</p>
+
+            <div class="auth-tabs">
+                <button id="showLoginTab" class="auth-tab-btn active" type="button">登录</button>
+                <button id="showRegisterTab" class="auth-tab-btn" type="button">注册</button>
+            </div>
+
+            <div id="loginPanel" class="auth-panel">
+                <div class="auth-form-group">
+                    <input id="loginUsername" type="text" placeholder="请输入用户名">
+                </div>
+                <div class="auth-form-group">
+                    <input id="loginPassword" type="password" placeholder="请输入密码">
+                </div>
+                <button id="loginBtn" class="auth-submit-btn" type="button">立即登录</button>
+            </div>
+
+            <div id="registerPanel" class="auth-panel" style="display: none;">
+                <div class="auth-form-group">
+                    <input id="registerUsername" type="text" placeholder="请输入用户名">
+                </div>
+                <div class="auth-form-group">
+                    <input id="registerPassword" type="password" placeholder="请输入密码">
+                </div>
+                <div class="auth-form-group">
+                    <input id="registerPhone" type="text" placeholder="请输入手机号（可选）">
+                </div>
+                <button id="registerBtn" class="auth-submit-btn" type="button">立即注册</button>
+            </div>
+
+            <div id="authMessage" class="auth-message"></div>
+        </div>
+    </div>
+
+    <!-- 主应用界面 -->
+    <div id="app-screen">
+        <div class="sidebar">
+            <div class="profile-section" id="profileBtn">
+                <div class="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <div class="profile-name" id="profileName">医疗用户</div>
+                    <div class="profile-desc">沈阳 · 智能问答工作台</div>
+                </div>
+                <div class="profile-arrow">▾</div>
+
+                <div class="profile-menu" id="profileMenu">
+                    <div class="menu-item" id="viewProfileBtn">👤 查看个人信息</div>
+                    <div class="menu-item" id="switchAccountBtn">🔄 切换账号</div>
+                    <div class="menu-item" id="logoutBtn">🚪 退出登录</div>
+                    <div class="menu-item" id="themeToggle">🌓 切换明暗模式</div>
+                </div>
+            </div>
+
+            <div class="sidebar-buttons">
+                <button class="func-btn" id="newChatBtn" type="button">➕ 新建对话</button>
+                <button class="func-btn secondary" id="uploadBtn" type="button">📁 上传文件</button>
+                <button class="func-btn secondary" id="kbBtn" type="button">📚 查看知识库</button>
+            </div>
+
+            <div class="history-container">
+                <div class="history-title">历史对话</div>
+
+                <div id="historyList"></div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="top-banner">
+                <button id="mobile-menu-btn" class="mobile-menu-btn">☰</button>
+                <div class="top-banner-left">
+                    <div class="top-banner-title">医疗RAG智能问答系统</div>
+                </div>
+                <div class="current-kb-badge" id="currentKbBadge">当前知识库：未选择</div>
+            </div>
+
+            <div class="chat-container">
+                <div id="chat-messages" class="chat-messages">
+                    <div class="medical-notice">
+                        ⚠️ 风险提示：系统回答仅供参考，若出现持续高热、剧烈疼痛、呼吸困难、明显出血等情况，请及时线下就医。
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <textarea id="chat-input" placeholder="请输入你的医疗健康问题，例如：发热三天伴咳嗽，需要做哪些检查？"></textarea>
+                    <button id="send-button" type="button">发送</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 上传文件弹窗 -->
+        <div class="modal" id="uploadModal">
+            <div class="modal-content modal-upload">
+                <div class="modal-header">
+                    <h3 class="modal-title">上传文件</h3>
+                    <button class="close-btn" type="button" data-close="uploadModal">×</button>
+                </div>
+
+                <div class="upload-area" id="uploadAreaModal">
+                    <input type="file" id="pdf-upload" accept=".pdf,.txt,.md,.docx" hidden>
+                    <label for="pdf-upload" class="upload-label">
+                        <span class="upload-main-text">点击或拖拽文件到此处</span>
+                        <span class="upload-sub-text">支持 PDF / TXT / MD / DOCX，上传后自动进入知识库</span>
+                    </label>
+                </div>
+
+                <div id="uploadPreview" class="upload-file-preview"></div>
+                <div id="upload-status" class="upload-status"></div>
+            </div>
+        </div>
+
+        <!-- 知识库管理弹窗 -->
+        <div class="modal" id="kbModal">
+            <div class="modal-content modal-kb">
+                <div class="modal-header">
+                    <h3 class="modal-title">知识库管理</h3>
+                    <button class="close-btn" type="button" data-close="kbModal">×</button>
+                </div>
+
+                <div class="kb-container">
+                    <div class="kb-left">
+                        <input type="text" class="search-box" id="fileSearch" placeholder="🔍 搜索文件...">
+
+                        <button id="toggle-kb-files" type="button" class="kb-toggle-btn">查看知识文档</button>
+
+                        <div id="kb-status" class="status-content">
+                            <p class="kb-empty-tip">暂无文档，请上传 PDF / TXT / MD / DOCX 文件</p>
+                        </div>
+
+                        <div id="kb-files-panel" class="kb-files-panel" style="display: block;">
+                            <div id="kb-files-list" class="kb-files-list"></div>
+                        </div>
+                    </div>
+
+                    <div class="kb-right">
+                        <div class="kb-toolbar">
+                            <button class="create-kb-btn" id="createKbBtn" type="button">➕ 新建知识库</button>
+                        </div>
+
+                        <div class="kb-grid" id="kbGrid">
+                            <!-- JS 动态渲染 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 单个知识库详情弹窗 -->
+        <div class="modal" id="libraryModal">
+            <div class="modal-content modal-library">
+                <div class="modal-header">
+                    <h3 class="modal-title" id="libTitle">知识库详情</h3>
+                    <button class="close-btn" type="button" data-close="libraryModal">×</button>
+                </div>
+
+                <div class="library-head">
+                    <div class="library-head-tip" id="libraryTip">
+                        可查看当前知识库中的文档，并继续添加或移除文件。
+                    </div>
+                    <button id="addFileToLibBtn" class="lib-add-btn" type="button">+ 添加文件</button>
+                </div>
+
+                <div class="library-files" id="libFiles">
+                    <!-- JS 动态渲染 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 个人信息弹窗 -->
+        <div class="modal" id="profileModal">
+            <div class="modal-content modal-profile">
+                <div class="modal-header">
+                    <h3 class="modal-title">个人信息</h3>
+                    <button class="close-btn" type="button" data-close="profileModal">×</button>
+                </div>
+
+                <div class="profile-detail-card">
+                    <div><strong>用户名：</strong><span id="profileModalUsername">医疗用户</span></div>
+                    <div><strong>地区：</strong>沈阳</div>
+                    <div><strong>系统：</strong>医疗 RAG 智能问答工作台</div>
+                    <div><strong>说明：</strong>当前页面为前端产品化版本，支持后续继续接入真实账号体系。</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="selectFileModal">
+            <div class="modal-content" style="max-width:600px;">
+                <div class="modal-header">
+                    <h3 class="modal-title">选择文件加入当前知识库</h3>
+                    <button class="close-btn" data-close="selectFileModal">×</button>
+                </div>
+
+                <div id="selectFileList"></div>
+
+                <div style="margin-top:16px; text-align:right;">
+                    <button id="confirmAddFilesBtn" class="func-btn">确认添加</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="inputModal" class="delete-modal" style="display:none;">
+            <div class="delete-modal-content">
+                <h4 id="inputModalTitle">请输入内容</h4>
+                <p id="inputModalLabel"></p>
+                <input
+                    id="inputModalField"
+                    type="text"
+                    style="width:100%; box-sizing:border-box; margin:10px 0; padding:10px; border:1px solid var(--border-color); border-radius:8px;"
+                >
+                <p id="inputModalError" style="min-height:20px; color:#dc2626; margin:0 0 8px;"></p>
+                <div class="delete-modal-buttons">
+                    <button id="cancelInputBtn" class="btn-cancel" type="button">取消</button>
+                    <button id="confirmInputBtn" class="btn-confirm" type="button">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 删除确认弹窗：保留原有 ID -->
+        <div id="deleteModal" class="delete-modal">
+            <div class="delete-modal-content">
+                <h4>确认删除</h4>
+                <p id="deleteModalText"></p>
+                <div class="delete-modal-buttons">
+                    <button id="cancelDeleteBtn" class="btn-cancel" type="button">取消</button>
+                    <button id="confirmDeleteBtn" class="btn-confirm" type="button">确认删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="script.js"></script>
+    <script type="module" src="js/app.js"></script>
+</body>
+
+</html>

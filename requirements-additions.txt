@@ -1,0 +1,9 @@
+The following packages should be added to `requirements.txt` if not present:
+
+- SQLAlchemy
+- PyMySQL
+- python-dotenv
+
+You can install with:
+
+pip install SQLAlchemy PyMySQL python-dotenv

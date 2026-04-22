@@ -1,0 +1,18 @@
+---
+alwaysApply: true
+---
+---
+description: prevent over-editing
+globs:
+  - "**/*"
+---
+
+Forbidden:
+
+- refactoring working code
+- adding new features
+- modifying unrelated files
+- renaming variables without need
+
+Always:
+- smallest possible change

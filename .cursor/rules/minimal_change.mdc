@@ -1,0 +1,18 @@
+---
+alwaysApply: true
+---
+---
+description: enforce minimal edits
+globs:
+  - "**/*"
+---
+
+Always make the smallest correct change.
+
+Do not:
+- refactor unrelated code
+- add abstractions
+- rename working variables
+- expand scope
+
+If a change touches many files, first stop and explain why.

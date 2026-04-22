@@ -1,0 +1,231 @@
+import os
+import logging
+from typing import List, Dict, Any, Optional
+
+import chromadb
+
+logger = logging.getLogger(__name__)
+
+
+class VectorRepository:
+    def __init__(self) -> None:
+        self.client = chromadb.PersistentClient(path="./chroma_db")
+        collection_name = os.getenv("CHROMA_COLLECTION_NAME", "rag_docs")
+
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+        logger.info(
+            "[vector_repository] collection 初始化完成 name=%s",
+            self.collection.name
+        )
+
+    def reset_collection(self) -> None:
+        """清空整个集合"""
+        self.client.delete_collection(name=self.collection.name)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection.name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    # 🔥 修复版本（兼容 document_processor）
+    def add_chunks(
+        self,
+        document_id: str,
+        filename: str,
+        chunks: List[Dict[str, Any]],
+        embeddings: List[List[float]],
+        metadatas: Optional[List[Dict[str, Any]]] = None,  # 🔥 新增
+        user_id: Optional[int] = None,
+        kb_id: Optional[int] = None,
+        doc_db_id: Optional[int] = None,
+    ) -> None:
+        if len(chunks) != len(embeddings):
+            raise ValueError("chunks 数量与 embeddings 数量不一致")
+
+        ids = []
+        documents = []
+        final_metadatas = []
+
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            # 🔥 兼容两种格式（index 或 chunk_index）
+            chunk_index = chunk.get("chunk_index", chunk.get("index", i))
+            chunk_text = chunk["text"]
+
+            ids.append(f"{document_id}_chunk_{chunk_index}")
+            documents.append(chunk_text)
+
+            # 🔥 优先使用传入的 metadatas（新逻辑）
+            if metadatas:
+                meta = metadatas[i]
+            else:
+                # fallback（兼容旧逻辑）
+                meta = {
+                    "document_id": document_id,
+                    "filename": filename,
+                    "chunk_index": chunk_index,
+                }
+
+                if user_id is not None:
+                    meta["user_id"] = user_id
+                if kb_id is not None:
+                    meta["kb_id"] = kb_id
+                if doc_db_id is not None:
+                    meta["doc_id"] = doc_db_id
+
+            final_metadatas.append(meta)
+
+        self.collection.add(
+            documents=documents,
+            embeddings=embeddings,
+            metadatas=final_metadatas,
+            ids=ids
+        )
+
+        logger.info(
+            "[vector_repository] 写入完成 document_id=%s chunks=%s",
+            document_id,
+            len(documents)
+        )
+
+    def query(
+        self,
+        query_embedding: List[float],
+        top_k: int = 3,
+        document_id: Optional[str] = None,
+        user_id: int = None,
+        knowledge_base_id: Optional[int] = None,
+        allowed_doc_ids: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+
+        if user_id is None:
+            raise ValueError("user_id is required for query (multi-tenant isolation)")
+
+        query_kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": top_k,
+        }
+
+        conditions = [{"user_id": user_id}]
+
+        if document_id:
+            conditions.append({"document_id": document_id})
+
+        # 方案一：当存在 allowed_doc_ids 时，仅按 doc 白名单过滤；
+        # 不再叠加 kb_id，避免与向量 metadata 单值 kb_id 冲突导致漏召回
+        if allowed_doc_ids:
+            conditions.append({"doc_id": {"$in": [int(x) for x in allowed_doc_ids]}})
+        elif knowledge_base_id is not None:
+            conditions.append({"kb_id": knowledge_base_id})
+
+        if len(conditions) == 1:
+            query_kwargs["where"] = conditions[0]
+        else:
+            query_kwargs["where"] = {"$and": conditions}
+
+        results = self.collection.query(**query_kwargs)
+
+        distances = results.get("distances", [])
+        metadatas = results.get("metadatas", [])
+
+        if distances and distances[0]:
+            for i, distance in enumerate(distances[0]):
+                metadata = metadatas[0][i] if metadatas and metadatas[0] else {}
+                logger.info(
+                    "[vector_repository] rank=%s distance=%s doc=%s chunk=%s user=%s",
+                    i + 1,
+                    distance,
+                    metadata.get("document_id"),
+                    metadata.get("chunk_index"),
+                    metadata.get("user_id"),
+                )
+
+        return results
+
+    def delete_by_document_id(self, document_id: str, user_id: int) -> int:
+        if user_id is None:
+            raise ValueError("user_id is required for delete_by_document_id")
+
+        results = self.collection.get(
+            where={
+                "$and": [
+                    {"document_id": document_id},
+                    {"user_id": user_id},
+                ]
+            }
+        )
+
+        ids = results.get("ids", [])
+
+        if not ids:
+            logger.info("[vector_repository] 未找到要删除的文档: %s", document_id)
+            return 0
+
+        self.collection.delete(ids=ids)
+
+        logger.info(
+            "[vector_repository] 删除完成 document_id=%s 删除chunk数=%s",
+            document_id,
+            len(ids)
+        )
+
+        return len(ids)
+
+
+vector_repository = VectorRepository()
+
+
+def query_similar_chunks(
+    query_embedding: List[float],
+    top_k: int = 3,
+    document_id: Optional[str] = None,
+    user_id: Optional[int] = None,  # 🔥 下一阶段用
+    knowledge_base_id: Optional[int] = None,
+    allowed_doc_ids: Optional[List[int]] = None,
+) -> List[Dict[str, Any]]:
+    results = vector_repository.query(
+        query_embedding=query_embedding,
+        top_k=top_k,
+        document_id=document_id,
+        user_id=user_id,
+        knowledge_base_id=knowledge_base_id,
+        allowed_doc_ids=allowed_doc_ids,
+    )
+
+    documents = results.get("documents", [])
+    metadatas = results.get("metadatas", [])
+    distances = results.get("distances", [])
+
+    if not documents or not documents[0]:
+        return []
+
+    docs = documents[0]
+    metas = metadatas[0] if metadatas else []
+    dists = distances[0] if distances else []
+
+    combined = []
+    for i, doc in enumerate(docs):
+        combined.append({
+            "text": doc,
+            "metadata": metas[i] if i < len(metas) else {},
+            "distance": dists[i] if i < len(dists) else None,
+        })
+
+    # 去重
+    seen_texts = set()
+    unique_results = []
+
+    for item in combined:
+        text = item["text"]
+        if text not in seen_texts:
+            seen_texts.add(text)
+            unique_results.append(item)
+
+    # 排序
+    unique_results.sort(
+        key=lambda x: x["distance"] if x["distance"] is not None else float("inf")
+    )
+
+    return unique_results[:top_k]

@@ -1,0 +1,68 @@
+{
+  "3_53a7d31aa4c5f2367e821972a52a72b025887be6ebb3d70d8f33009c2225536e": {
+    "file_hash": "53a7d31aa4c5f2367e821972a52a72b025887be6ebb3d70d8f33009c2225536e",
+    "document_id": "doc_1f1b79e5",
+    "filename": "医学影像学.pdf",
+    "user_id": 3,
+    "kb_id": 2,
+    "doc_id": 6,
+    "total_chunks": 2,
+    "total_text_length": 49764,
+    "created_at": "2026-04-22T13:56:58.111712"
+  },
+  "4_4c099a4a656b72d6524c7acd05359da10b4dd861def402b80acd94a307d410d6": {
+    "file_hash": "4c099a4a656b72d6524c7acd05359da10b4dd861def402b80acd94a307d410d6",
+    "document_id": "doc_fa940749",
+    "filename": "基层医疗卫生机构高血压防治管理标准.pdf",
+    "user_id": 4,
+    "kb_id": 3,
+    "doc_id": 7,
+    "total_chunks": 8,
+    "total_text_length": 3645,
+    "created_at": "2026-04-22T14:33:52.113621"
+  },
+  "3_02a76e9fd37c9061999873537515fd9cd603aa5721d222e51692524d8ed65a95": {
+    "file_hash": "02a76e9fd37c9061999873537515fd9cd603aa5721d222e51692524d8ed65a95",
+    "document_id": "doc_b09e941c",
+    "filename": "附件：药理1-7章.pdf",
+    "user_id": 3,
+    "kb_id": 4,
+    "doc_id": 9,
+    "total_chunks": 29,
+    "total_text_length": 12965,
+    "created_at": "2026-04-22T21:58:33.410064"
+  },
+  "3_eb41e95c081c6e1d37da84d9de8be0d573cf8e59d4d710ba2bab1dd446666df8": {
+    "file_hash": "eb41e95c081c6e1d37da84d9de8be0d573cf8e59d4d710ba2bab1dd446666df8",
+    "document_id": "doc_7259bd67",
+    "filename": "局部解剖学【终版】.pdf",
+    "user_id": 3,
+    "kb_id": 2,
+    "doc_id": 10,
+    "total_chunks": 54,
+    "total_text_length": 24098,
+    "created_at": "2026-04-22T22:01:55.220077"
+  },
+  "4_4579602bebc5d2e57e9696b8222c1743dc4ac221ee5bf990f49c9af4f58d631d": {
+    "file_hash": "4579602bebc5d2e57e9696b8222c1743dc4ac221ee5bf990f49c9af4f58d631d",
+    "document_id": "doc_5ac02458",
+    "filename": "传染病学【终版】.pdf",
+    "user_id": 4,
+    "kb_id": 6,
+    "doc_id": 11,
+    "total_chunks": 37,
+    "total_text_length": 66982,
+    "created_at": "2026-04-22T23:07:42.197366"
+  },
+  "3_fc462b9df4993b0060d4e77dbd4edee444989d74fcac7b64474096244ce99174": {
+    "file_hash": "fc462b9df4993b0060d4e77dbd4edee444989d74fcac7b64474096244ce99174",
+    "document_id": "doc_3afab484",
+    "filename": "结核病——世界卫生组织.pdf",
+    "user_id": 3,
+    "kb_id": 2,
+    "doc_id": 12,
+    "total_chunks": 8,
+    "total_text_length": 3722,
+    "created_at": "2026-04-23T02:02:35.775078"
+  }
+}

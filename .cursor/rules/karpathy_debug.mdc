@@ -1,0 +1,19 @@
+---
+description: strict debugging rule
+globs:
+  - "**/*.py"
+  - "**/*.js"
+---
+
+Before writing code:
+
+- explain bug in 1-2 sentences
+- identify exact failing step
+
+If no clear break point:
+→ do not code
+
+Rules:
+- minimal fix only
+- no refactor
+- no extra changes

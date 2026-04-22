@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+---
+description: rag debugging
+globs:
+  - "**/*.py"
+---
+
+When answer is wrong:
+
+Check in order:
+1. retrieval filter
+2. query consistency
+3. context
+4. prompt
+
+Do NOT jump to prompt fixes.
+
+Prefer fixing retrieval.
