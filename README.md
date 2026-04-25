@@ -1,294 +1,216 @@
-# RAG Knowledge Base
+# 思医：医疗知识库 RAG 问答系统
+**思医**是一款面向医疗资料学习、资料整理、智能检索问答的多用户 RAG 系统，支持文档上传、知识库管理、流式问答、溯源检索等完整功能。
 
-一个最小可用的智能知识库问答系统，支持 PDF 上传、文本解析、向量入库与基于知识库的问答。
-
-## 项目简介
-
-本项目是一个单文档版 RAG（Retrieval-Augmented Generation，检索增强生成）问答系统。
-
-用户可以上传 PDF 文档，系统会自动完成：
-
-- PDF 文本解析
-- 文本分块
-- Embedding 生成
-- 向量入库（ChromaDB）
-- 基于知识库内容的问答
-
-当前版本重点是完成第一版可运行原型，适合学习 RAG 基本链路，也适合作为个人项目展示。
+> 免责声明：本系统用于医学资料辅助学习与查询，不替代医生诊断与治疗决策。
 
 ---
 
-## 当前已实现功能
+## 1. 项目定位
+本项目聚焦医疗文档知识库场景，提供从文档处理到智能问答的完整链路，适用于：
+- 医学学习与复习
+- 医疗资料检索与归纳
+- 医疗知识库沉淀与复用
 
-- PDF 文件上传
-- PDF 文本解析
-- 文本分块
-- Embedding 生成
-- ChromaDB 向量入库
-- 基于知识库的问答
-- 简短来源展示
-- 无关问题兜底回复
+系统支持多用户与知识库隔离，不同用户、不同知识库可独立管理与检索。
 
 ---
 
-## 当前限制
+## 2. 核心功能
+### 2.1 用户认证
+- 用户注册、登录
+- JWT 鉴权
+- 个人账户信息查询
 
-- 仅支持 PDF 文件
-- 当前为单文档知识库
-- 上传新文档时会清空旧知识库
-- 暂不支持多轮对话
-- 暂不支持多文档同时检索
-- 暂不支持流式输出
-- 暂不支持用户系统
+### 2.2 知识库管理
+- 多知识库创建与维护
+- 知识库文件列表管理
+- 文档添加/移除知识库
+- 知识库删除与权限隔离
+
+### 2.3 文档上传与处理
+- 支持格式：`PDF` / `TXT` / `MD` / `DOCX`
+- 文档解析、文本清洗、内容分块
+- 文本向量生成（Embedding）
+- 向量数据存入 `ChromaDB`
+- 文档元数据存入 `MySQL`
+
+### 2.4 RAG 问答
+- 常规问答接口 `/chat`
+- 流式问答接口 `/chat-stream`
+- 问答结果来源溯源
+- 基于用户/知识库/文档的检索隔离
+
+### 2.5 会话管理
+- 问答会话列表查询
+- 历史消息查看
+- 会话删除、标题修改
+
+### 2.6 医疗安全机制
+- 医疗问答智能路由
+- 高危医疗问题安全拦截
+- 风险内容屏蔽与兜底回复
 
 ---
 
-## 快速开始
+## 3. 技术栈
+### 后端
+- `Python`
+- `FastAPI`
+- `SQLAlchemy`
+- `MySQL`（业务数据存储）
+- `ChromaDB`（向量数据库）
+- 通用大模型 & 向量模型（OpenAI 兼容接口）
 
-### 环境要求
+### 前端
+- `Vue 3`
+- `Vite`
+- 遗留原生 JS 模块，后续逐步组件化重构
 
-- Python 3.9+
-- pip 包管理器
+### 文档解析
+- `PyMuPDF`
+- `python-docx`
 
-### 安装步骤
+---
 
-1. **克隆项目**
-```bash
-git clone <repository-url>
-cd rag-knowledgebase
+## 4. 项目目录结构
+```text
+rag-knowledgebase/
+├─ backend/                # 后端核心代码
+├─ frontend-vue/           # Vue 前端项目
+├─ docs/                   # 项目文档
+├─ tests/                  # 测试文件
+├─ .env.example            # 环境变量模板
+├─ requirements.txt        # 生产依赖
+├─ requirements-dev.txt    # 开发依赖
+└─ README.md               # 项目说明
 ```
 
-2. **安装依赖**
+---
+
+## 5. 环境变量配置
+复制 `.env.example` 为 `.env`，填写对应参数：
+
+```env
+# 数据库
+DATABASE_URL=
+
+# 认证配置
+SECRET_KEY=
+JWT_SECRET_KEY=
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=
+
+# 大模型配置
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+LLM_MODEL=
+EMBEDDING_MODEL=
+
+# 存储配置
+CHROMA_PERSIST_DIR=
+UPLOAD_DIR=
+CHROMA_COLLECTION_NAME=
+
+# 跨域配置
+CORS_ORIGINS=
+```
+
+> 注意：禁止将密钥、密码等敏感信息上传至代码仓库。
+
+---
+
+## 6. 本地启动
+### 6.1 后端启动
 ```bash
 pip install -r requirements.txt
+python -m uvicorn backend.main:app --reload
 ```
+- 服务地址：`http://127.0.0.1:8000`
+- 接口文档：`http://127.0.0.1:8000/docs`
 
-3. **配置环境变量**
+### 6.2 前端启动
 ```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑 .env 文件，填入你的配置
-# 特别是 OPENAI_API_KEY
+cd frontend-vue
+npm install
+npm run dev
 ```
+- 前端打包：`npm run build`
 
-4. **创建必要的目录**
+---
+
+## 7. 健康检测
 ```bash
-# 创建上传目录
-mkdir uploads
+# 服务存活检测
+curl http://127.0.0.1:8000/health
 
-# 创建向量数据库目录（会在首次运行时自动创建）
+# 系统就绪检测
+curl http://127.0.0.1:8000/health/ready
 ```
-
-### 本地启动
-
-**启动后端服务**
-```bash
-# 激活虚拟环境（如果有）
-.venv\Scripts\activate
-
-# 启动后端
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-**启动前端服务**（新终端窗口）
-```bash
-# 进入前端目录
-cd frontend
-
-# 启动前端（使用 Python 服务器）
-python -m http.server 3000
-```
-
-### 访问应用
-
-- **前端界面**：http://127.0.0.1:3000
-- **后端 API**：http://127.0.0.1:8000
-- **API 文档**：http://127.0.0.1:8000/docs
-- **Swagger UI**：http://127.0.0.1:8000/docs
-- **ReDoc**：http://127.0.0.1:8000/redoc
+- `/health`：服务运行状态检测
+- `/health/ready`：数据库、文件目录、模型配置完整性检测
 
 ---
 
-## 环境变量说明
-
-`.env` 文件中的配置项：
-
-| 变量名 | 说明 | 示例值 |
-|--------|------|--------|
-| OPENAI_API_KEY | OpenAI 兼容 API 的 API Key | `sk-xxxxx` |
-| OPENAI_BASE_URL | API 基础 URL | `https://api.siliconflow.cn/v1` |
-| LLM_MODEL | 使用的 LLM 模型 | `Qwen/Qwen2.5-7B-Instruct` |
-| EMBEDDING_MODEL | 使用的 Embedding 模型 | `BAAI/bge-large-zh-v1.5` |
-| CHROMA_COLLECTION_NAME | ChromaDB 集合名称 | `rag_docs` |
-
-### 推荐的 LLM 模型
-
-- **中文问答**：`Qwen/Qwen2.5-7B-Instruct`（推荐）
-- **通用问答**：`gpt-3.5-turbo`
-- **中文增强**：`Qwen/Qwen2.5-72B-Instruct`
-
-### 推荐的 Embedding 模型
-
-- **中文**：`BAAI/bge-large-zh-v1.5`（推荐）
-- **英文**：`openai/text-embedding-ada-002`
+## 8. 核心流程验证
+1. 用户注册
+2. 账号登录
+3. 创建知识库
+4. 上传医疗文档
+5. 文档绑定知识库
+6. 常规问答
+7. 流式问答
+8. 验证回答来源
+9. 验证知识库隔离机制
 
 ---
 
-## 主要接口说明
-
-### 1. PDF 上传接口
-
-**接口路径**：`POST /upload`
-
-**请求**：
-- Content-Type: `multipart/form-data`
-- 字段：`file`（PDF 文件）
-
-**响应**：
-```json
-{
-  "document_id": "doc_xxxxx",
-  "filename": "test.pdf",
-  "status": "success",
-  "message": "上传成功"
-}
+## 9. 核心接口列表
 ```
+# 认证
+/auth/register
+/auth/login
+/auth/me
 
-**说明**：
-- 上传后会自动完成 PDF 解析、文本分块、Embedding 生成和向量入库
-- 每次上传新文档时会清空旧知识库
-- 上传过程中状态会从 "empty" → "processing" → "ready"
+# 文档与知识库
+/upload
+/knowledge
 
----
+# 问答
+/chat
+/chat-stream
 
-### 2. 知识库状态查询接口
+# 会话管理
+/chat/sessions
+/chat/messages
+/chat/session
+/chat/session/title
 
-**接口路径**：`GET /knowledge/status`
-
-**请求**：无
-
-**响应**：
-```json
-{
-  "has_document": true,
-  "filename": "test.pdf",
-  "status": "ready"
-}
-```
-
-**状态说明**：
-- `empty`：没有上传文档
-- `processing`：文档正在处理中
-- `ready`：文档已处理完成，可以问答
-
----
-
-### 3. 问答接口
-
-**接口路径**：`POST /chat`
-
-**请求**：
-```json
-{
-  "question": "你想问什么？"
-}
-```
-
-**响应**：
-```json
-{
-  "answer": "基于知识库的回答内容...",
-  "status": "success"
-}
-```
-
-**说明**：
-- 系统会先从向量数据库中检索相关内容
-- 然后使用 LLM 生成基于知识库的回答
-- 如果知识库中没有相关信息，会返回"知识库未收录相关内容"
-
----
-
-## 项目结构
-
-```
-rag-knowledgebase/
-├── backend/                    # 后端代码
-│   ├── api/                    # API 路由
-│   │   ├── upload.py          # 上传接口
-│   │   ├── chat.py            # 问答接口
-│   │   └── knowledge_status.py # 状态查询接口
-│   ├── core/                   # 核心配置
-│   │   ├── config.py          # 配置文件
-│   │   ├── embedding_client.py # Embedding 客户端
-│   │   └── llm_client.py      # LLM 客户端
-│   ├── models/                 # 数据模型
-│   │   ├── upload.py          # 上传响应模型
-│   │   ├── chat.py            # 问答请求/响应模型
-│   │   └── knowledge_status.py # 状态响应模型
-│   ├── repositories/          # 数据访问层
-│   │   └── vector_repository.py # 向量数据库操作
-│   ├── services/              # 业务逻辑
-│   │   ├── pdf_parser.py      # PDF 解析服务
-│   │   └── text_chunker.py    # 文本分块服务
-│   └── main.py                # 应用入口
-├── frontend/                   # 前端代码
-│   ├── index.html             # 页面结构
-│   ├── styles.css             # 样式文件
-│   └── script.js              # 业务逻辑
-├── uploads/                    # PDF 上传目录
-├── chroma_db/                  # ChromaDB 向量数据库
-├── docs/                       # 文档目录
-│   └── mvp_baseline_test.md   # 基线验证流程
-├── .env.example               # 环境变量模板
-├── .gitignore                 # Git 忽略文件
-├── requirements.txt           # Python 依赖
-└── README.md                  # 项目说明
+# 系统检测
+/health
+/health/ready
 ```
 
 ---
 
-## 开发指南
-
-### 添加新功能
-
-1. 在 `backend/` 下创建对应的服务或模块
-2. 在 `backend/api/` 下添加新的路由
-3. 在 `backend/models/` 下添加数据模型
-4. 在前端 `frontend/` 下添加相应的 UI 交互
-5. 更新本文档
-
-### 调试技巧
-
-1. **查看后端日志**：后端控制台会输出详细的处理日志
-2. **检查向量数据库**：使用 ChromaDB 客户端查询向量集合
-3. **查看 API 文档**：访问 http://127.0.0.1:8000/docs 测试接口
-
-### 常见问题
-
-**Q: 上传后状态一直是 processing？**
-A: 检查后端日志，可能是 PDF 解析或 Embedding 生成失败
-
-**Q: 问答返回"知识库未收录"？**
-A: 检查上传的文档内容是否包含相关文本
-
-**Q: 端口被占用？**
-A: 修改 `.env` 中的端口配置，或关闭占用端口的程序
+## 10. 项目成熟度
+- 项目阶段：`MVP+` / 早期 Beta
+- 运行状态：核心业务链路完整可用
+- 迭代方向：前端工程化、功能优化、性能升级
 
 ---
 
-## 技术栈
-
-- **后端**：FastAPI, Uvicorn
-- **前端**：原生 HTML/CSS/JavaScript
-- **PDF 解析**：PyMuPDF
-- **向量数据库**：ChromaDB
-- **Embedding**：OpenAI 兼容 API
-- **LLM**：OpenAI 兼容 API
+## 11. 医疗安全声明
+1. 本系统仅用于**医疗资料学习与知识查询**；
+2. 不提供疾病诊断、用药指导、医疗决策等服务；
+3. 健康问题请咨询专业医师，切勿依赖系统回答。
 
 ---
 
-## License
-
-MIT
+## 12. 后续优化计划
+- 数据库版本管理（Alembic）
+- 文档异步处理与任务队列
+- 检索优化：混合检索 + 重排模型
+- RAG 问答效果评估体系
+- 前端全量 Vue 组件重构
+- 系统日志与运行监控优化
+- 医疗安全策略升级

@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from backend.core.logger_config import setup_logger
@@ -28,8 +29,6 @@ async def delete_document(
             detail="document_id 不能为空"
         )
 
-    document_id_str = str(document_id)
-
     doc = (
         db.query(Document)
         .filter(
@@ -45,16 +44,27 @@ async def delete_document(
         )
 
     try:
-        # 1) 删除向量库（兼容旧逻辑）
+        # 1) 通过 registry 解析向量 document_id（doc_xxx），兼容历史数据
+        document_id_str = str(document_id)
+        vector_document_id = document_id_str
+        registry = load_registry()
+        for metadata in registry.values():
+            if metadata.get("user_id") != current_user.id:
+                continue
+            if str(metadata.get("doc_id")) == document_id_str:
+                vector_document_id = str(metadata.get("document_id") or document_id_str)
+                break
+
+        # 2) 删除向量库
         deleted_count = vector_repository.delete_by_document_id(
-            document_id=document_id_str,
+            document_id=vector_document_id,
             user_id=current_user.id,
         )
 
-        # 2) 删除 registry（兼容旧逻辑）
-        registry_deleted = registry_delete(document_id_str, user_id=current_user.id)
+        # 3) 删除 registry
+        registry_deleted = registry_delete(vector_document_id, user_id=current_user.id)
 
-        # 3) 先删依赖子表，避免 ORM 把外键置空触发 NOT NULL 错误
+        # 4) 先删依赖子表，避免 ORM 把外键置空触发 NOT NULL 错误
         db.query(KnowledgeBaseDocument).filter(
             KnowledgeBaseDocument.document_id == doc.id,
             KnowledgeBaseDocument.user_id == current_user.id,
@@ -65,13 +75,18 @@ async def delete_document(
             DocumentChunk.user_id == current_user.id,
         ).delete(synchronize_session=False)
 
-        # 4) 再删主表 document
+        # 5) 删除本地上传文件（硬删除）
+        if doc.file_path and os.path.exists(doc.file_path):
+            os.remove(doc.file_path)
+
+        # 6) 再删主表 document
         db.delete(doc)
         db.commit()
 
         logger.info(
-            "[delete] 文档删除完成 document_id=%s deleted_chunks=%s registry_deleted=%s",
+            "[delete] 文档删除完成 document_id=%s vector_document_id=%s deleted_chunks=%s registry_deleted=%s",
             document_id,
+            vector_document_id,
             deleted_count,
             registry_deleted
         )

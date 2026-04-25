@@ -21,6 +21,30 @@ debug_logger = setup_logger(
 )
 
 
+def split_for_embedding(text: str, max_len: int = 400) -> list[str]:
+    """
+    将长文本进一步切分，保证 embedding 输入不超长。
+    使用字符级近似（比 token 更保守）。
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    if len(text) <= max_len:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = start + max_len
+        part = text[start:end].strip()
+        if part:
+            chunks.append(part)
+        start = end
+
+    return chunks
+
+
 def process_document(
     file_path: str,
     filename: str,
@@ -68,18 +92,8 @@ def process_document(
         if not normalized_chunks:
             raise ValueError("有效 chunks 为空")
 
-        # 3️⃣ embedding
+        # 3️⃣ embedding 前做长度保护：避免超过模型输入上限
         chunk_texts = [c["text"] for c in normalized_chunks]
-        embeddings = embed_texts(chunk_texts)
-
-        if len(embeddings) != len(normalized_chunks):
-            raise ValueError("embedding 数量不一致")
-
-        logger.info(
-            "[document_processor] embedding 模型=%s 维度=%s",
-            EMBEDDING_MODEL,
-            len(embeddings[0]) if embeddings else 0
-        )
 
         # 4️⃣ 构建 metadata（🔥核心修复）
         metadatas = []
@@ -95,13 +109,55 @@ def process_document(
                 "doc_id": doc_db_id,
             })
 
+        safe_chunks: list[str] = []
+        safe_metadatas: list[dict] = []
+        safe_chunk_records: list[dict] = []
+        safe_chunk_index = 0
+
+        for text, meta in zip(chunk_texts, metadatas):
+            split_texts = split_for_embedding(text, max_len=400)
+            for idx, t in enumerate(split_texts):
+                new_meta = meta.copy()
+                new_meta["sub_chunk"] = idx
+                new_meta["parent_chunk_index"] = meta.get("chunk_index")
+                # 保证向量 chunk_index 全局唯一，避免同文档 ID 冲突
+                new_meta["chunk_index"] = safe_chunk_index
+
+                safe_chunks.append(t)
+                safe_metadatas.append(new_meta)
+                safe_chunk_records.append({
+                    "text": t,
+                    "chunk_index": safe_chunk_index,
+                })
+                safe_chunk_index += 1
+
+        logger.info(
+            "[embedding_guard] before=%s after=%s",
+            len(chunk_texts),
+            len(safe_chunks),
+        )
+
+        if not safe_chunks:
+            raise ValueError("embedding 输入为空（safe_chunks）")
+
+        embeddings = embed_texts(safe_chunks)
+
+        if len(embeddings) != len(safe_chunks):
+            raise ValueError("embedding 数量与安全分块数量不一致")
+
+        logger.info(
+            "[document_processor] embedding 模型=%s 维度=%s",
+            EMBEDDING_MODEL,
+            len(embeddings[0]) if embeddings else 0
+        )
+
         # 5️⃣ 写入向量库（🔥带 metadata）
         vector_repository.add_chunks(
             document_id=document_id,
             filename=filename,
-            chunks=normalized_chunks,
+            chunks=safe_chunk_records,
             embeddings=embeddings,
-            metadatas=metadatas,  
+            metadatas=safe_metadatas,
         )
 
         # 6️⃣ registry
@@ -115,7 +171,7 @@ def process_document(
                 "user_id": user_id,   
                 "kb_id": kb_id,
                 "doc_id": doc_db_id,
-                "total_chunks": len(normalized_chunks),
+                "total_chunks": len(safe_chunk_records),
                 "total_text_length": len(raw_text),
                 "created_at": datetime.now().isoformat()
             }
@@ -127,9 +183,9 @@ def process_document(
             "status": "success",
             "document_id": document_id,
             "filename": filename,
-            "total_chunks": len(normalized_chunks),
+            "total_chunks": len(safe_chunk_records),
             "total_text_length": len(raw_text),
-            "chunks": normalized_chunks,
+            "chunks": safe_chunk_records,
         }
 
     except Exception as exc:

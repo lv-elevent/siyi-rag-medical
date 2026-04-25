@@ -66,6 +66,18 @@ class MedicalAgent:
     GENERIC_HISTORY_QUESTIONS = {
         "怎么办", "严重吗"
     }
+    SHORT_MEDICAL_TERMS = {
+        "解剖学", "局部解剖学", "系统解剖学",
+        "药理学", "生理学", "病理学", "免疫学", "微生物学", "组织学",
+        "高血压", "糖尿病", "冠心病", "肺炎", "胃炎", "哮喘", "感冒",
+        "头痛", "发热", "咳嗽", "腹泻", "胸闷", "失眠",
+        "布洛芬", "阿司匹林", "阿莫西林", "头孢", "胰岛素",
+    }
+    FOLLOWUP_TRIGGERS = {
+        "怎么办", "严重吗", "危险吗", "会传染吗",
+        "这个", "那个", "这种", "那种", "它",
+        "吃什么药", "需要住院吗"
+    }
 
     def prepare(
         self,
@@ -114,7 +126,7 @@ class MedicalAgent:
                 contextual_query="",
                 rewritten_query="",
                 full_context="",
-                error_message="知识库未收录相关内容。"
+                error_message="知识库未收录相关内容，你可以上传相关文档。"
             )
 
         history, history_turns = self._load_history(session_id)
@@ -178,7 +190,7 @@ class MedicalAgent:
                 rewritten_query=rewritten_query,
                 full_context="",
                 retrieval_query=retrieval_query,
-                error_message="知识库未收录相关内容。",
+                error_message="知识库未收录相关内容，你可以上传相关文档入库。",
                 history_turns=history_turns
             )
 
@@ -248,7 +260,7 @@ class MedicalAgent:
         if prepare_result.status == "empty":
             return self._build_chat_response(
                 prepare_result=prepare_result,
-                answer=prepare_result.error_message or "知识库未收录相关内容。"
+                answer=prepare_result.error_message or "知识库未收录相关内容，你可以上传相关文档入库。"
             )
 
         answer_question = (
@@ -270,7 +282,7 @@ class MedicalAgent:
         if not answer_body:
             return self._build_chat_response(
                 prepare_result=prepare_result,
-                answer="知识库未收录相关内容。"
+                answer="知识库未收录相关内容，你可以上传相关文档入库。"
             )
 
         answer_body = answer_body.strip()
@@ -287,13 +299,13 @@ class MedicalAgent:
             logger.warning("[medical-agent] safety_filter 判定不安全，返回兜底答复")
             return self._build_chat_response(
                 prepare_result=prepare_result,
-                answer="知识库未收录相关内容。"
+                answer="知识库未收录相关内容，你可以上传相关文档入库。"
             )
 
         if self._should_fallback_empty_answer(answer_body):
             return self._build_chat_response(
                 prepare_result=prepare_result,
-                answer="知识库未收录相关内容。"
+                answer="知识库未收录相关内容，你可以上传相关文档入库。"
             )
 
         if session_id:
@@ -312,20 +324,15 @@ class MedicalAgent:
 
     def _is_followup_question(self, question: str) -> bool:
         q = question.strip()
+        has_followup_trigger = any(k in q for k in self.FOLLOWUP_TRIGGERS)
+        hit_medical_term = any(term in q for term in self.SHORT_MEDICAL_TERMS)
 
-        # 太短才认为可能是追问
-        if len(q) <= 3:
-            return True
+        # 短术语不等于追问，命中医学术语且无追问词时明确跳过
+        if hit_medical_term and not has_followup_trigger:
+            logger.info("[medical-agent] skip followup: recognized medical term | question=%s", q)
+            return False
 
-        pronoun_markers = ["这个", "那个", "这种", "那种", "它", "他", "她"]
-        if any(p in q for p in pronoun_markers):
-            return True
-
-        followup_keywords = [
-            "怎么办", "严重吗", "危险吗", "会传染吗",
-            "怎么治疗", "吃什么药", "多久能好", "需要住院吗"
-        ]
-        if any(k in q for k in followup_keywords):
+        if has_followup_trigger:
             return True
 
         return False
@@ -535,6 +542,13 @@ class MedicalAgent:
             document_id,
             knowledge_base_id,
         )
+        logger.info(
+            "[kb_trace][medical_agent] user_id=%s | knowledge_base_id=%s | allowed_doc_ids_count=%s | document_id=%s",
+            user_id,
+            knowledge_base_id,
+            len(allowed_doc_ids or []),
+            document_id,
+        )
 
         last_exception = None
 
@@ -557,12 +571,14 @@ class MedicalAgent:
                 )
 
                 if results:
+                    filtered_results = self._filter_same_topic_results(results, safe_original or query)
                     logger.info(
-                        "[retrieval] success | strategy=%s | hits=%s",
+                        "[retrieval] success | strategy=%s | hits=%s | filtered_hits=%s",
                         query_name,
-                        len(results)
+                        len(results),
+                        len(filtered_results)
                     )
-                    return results, query
+                    return filtered_results, query
 
                 logger.info("[retrieval] empty result for %s", query_name)
 
@@ -575,10 +591,13 @@ class MedicalAgent:
                 last_exception = e
                 continue
 
-        logger.error(
-            "[retrieval] 所有查询策略失败 | last_exception=%s",
-            repr(last_exception)
-        )
+        if last_exception is not None:
+            logger.error(
+                "[retrieval] 所有查询策略异常结束 | last_exception=%s",
+                repr(last_exception)
+            )
+        else:
+            logger.info("[retrieval] 各查询策略均无命中")
 
         return [], safe_rewritten or safe_contextual or safe_original
 
@@ -589,11 +608,22 @@ class MedicalAgent:
         sources: List[Dict[str, Any]] = []
         for item in matched_results:
             meta = item.get("metadata", {})
-            sources.append({
+            document_id = meta.get("document_id") or meta.get("doc_id")
+            kb_id = meta.get("kb_id") or meta.get("knowledge_base_id")
+            page = meta.get("page") or meta.get("page_number")
+            title = meta.get("title") or meta.get("document_title")
+            source_item = {
                 "filename": meta.get("filename", "未知文件"),
                 "chunk_index": meta.get("chunk_index", 0),
-                "distance": item.get("distance", 0)
-            })
+                "distance": item.get("distance", 0),
+                "document_id": document_id,
+                "kb_id": kb_id,
+                "page": page,
+                "title": title,
+            }
+            sources.append(source_item)
+        files = sorted({str(s.get("filename", "未知文件")) for s in sources})
+        logger.info("[sources] count=%s | files=%s", len(sources), files)
         return sources
 
     def _should_use_history(
@@ -633,23 +663,54 @@ class MedicalAgent:
         history: List[ConversationTurn],
         question: str = ""
     ) -> str:
-        rag_context = "\n\n".join(
-            item.get("text", "")
-            for item in matched_results
-            if item.get("text")
-        )
+        chunk_texts: List[str] = []
+        for idx, item in enumerate(matched_results):
+            text = item.get("text")
+            if not isinstance(text, str):
+                text = str(text or "")
+            text = text.strip()
+            logger.debug("[context_fix] chunk_index=%s text_len=%s", idx, len(text))
+            if text:
+                chunk_texts.append(text)
+
+        rag_context = "\n\n".join(chunk_texts).strip()
+        logger.debug("[context_fix] rag_context_len=%s", len(rag_context))
+
+        # 最小上下文保护：命中来源时，避免向 LLM 传入过短上下文
+        if matched_results and len(rag_context) < 50:
+            top_text = matched_results[0].get("text")
+            if not isinstance(top_text, str):
+                top_text = str(top_text or "")
+            top_text = top_text.strip()
+            if top_text:
+                rag_context = top_text
+                logger.warning(
+                    "[context_fix] rag_context too short, fallback top1 full text | top1_len=%s",
+                    len(rag_context)
+                )
+                while len(rag_context) < 50:
+                    rag_context = f"{rag_context}\n{top_text}".strip()
+                logger.warning(
+                    "[context_fix] expanded short context using top1 text | expanded_len=%s",
+                    len(rag_context)
+                )
+
+        logger.debug("[context_fix] final_rag_context_len=%s", len(rag_context))
 
         if self._should_use_history(question, history):
             history_context = self._format_history(history[-2:])
 
             if history_context:
-                return (
+                final_context = (
                     f"【上一轮对话主题】\n"
                     f"{history_context}\n\n"
                     f"【知识库内容】\n"
                     f"{rag_context}"
                 )
+                logger.debug("[context_fix] final_context_len=%s", len(final_context))
+                return final_context
 
+        logger.debug("[context_fix] final_context_len=%s", len(rag_context))
         return rag_context
 
     def _save_conversation_memory(
@@ -714,6 +775,13 @@ class MedicalAgent:
     ) -> Dict[str, Any]:
         q = question.strip()
         result = {"needs_followup": False, "followup_question": None, "reason": "none"}
+        has_followup_trigger = any(k in q for k in self.FOLLOWUP_TRIGGERS)
+        hit_medical_term = any(term in q for term in self.SHORT_MEDICAL_TERMS)
+
+        # 短术语名词型输入默认不追问，优先进入检索与回答
+        if hit_medical_term and not has_followup_trigger:
+            logger.info("[medical-agent] skip followup: recognized medical term | question=%s", q)
+            return result
 
         if len(q) <= 2:
             result.update({

@@ -3,14 +3,15 @@ import logging
 from typing import List, Dict, Any, Optional
 
 import chromadb
+from backend.core import config
 
 logger = logging.getLogger(__name__)
 
 
 class VectorRepository:
     def __init__(self) -> None:
-        self.client = chromadb.PersistentClient(path="./chroma_db")
-        collection_name = os.getenv("CHROMA_COLLECTION_NAME", "rag_docs")
+        self.client = chromadb.PersistentClient(path=config.CHROMA_PERSIST_DIR)
+        collection_name = config.CHROMA_COLLECTION_NAME
 
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
@@ -110,15 +111,19 @@ class VectorRepository:
 
         conditions = [{"user_id": user_id}]
 
-        if document_id:
-            conditions.append({"document_id": document_id})
-
-        # 方案一：当存在 allowed_doc_ids 时，仅按 doc 白名单过滤；
-        # 不再叠加 kb_id，避免与向量 metadata 单值 kb_id 冲突导致漏召回
-        if allowed_doc_ids:
-            conditions.append({"doc_id": {"$in": [int(x) for x in allowed_doc_ids]}})
-        elif knowledge_base_id is not None:
-            conditions.append({"kb_id": knowledge_base_id})
+        if document_id is not None:
+            doc_value = str(document_id).strip()
+            if doc_value:
+                # 兼容两种前端传值：
+                # 1) 向量 document_id（如 doc_xxx） -> 过滤 metadata.document_id
+                # 2) DB 主键 document_id（如 31）    -> 过滤 metadata.doc_id
+                if doc_value.startswith("doc_"):
+                    conditions.append({"document_id": doc_value})
+                elif doc_value.isdigit():
+                    conditions.append({"doc_id": int(doc_value)})
+                else:
+                    # 保守兜底：按原字段过滤，避免改变未知旧调用行为
+                    conditions.append({"document_id": doc_value})
 
         if len(conditions) == 1:
             query_kwargs["where"] = conditions[0]
@@ -133,7 +138,7 @@ class VectorRepository:
         if distances and distances[0]:
             for i, distance in enumerate(distances[0]):
                 metadata = metadatas[0][i] if metadatas and metadatas[0] else {}
-                logger.info(
+                logger.debug(
                     "[vector_repository] rank=%s distance=%s doc=%s chunk=%s user=%s",
                     i + 1,
                     distance,
@@ -160,15 +165,22 @@ class VectorRepository:
         ids = results.get("ids", [])
 
         if not ids:
-            logger.info("[vector_repository] 未找到要删除的文档: %s", document_id)
+            logger.info("[sources_cleanup] removed chunks count=0 document_id=%s", document_id)
             return 0
 
-        self.collection.delete(ids=ids)
+        self.collection.delete(
+            where={
+                "$and": [
+                    {"document_id": document_id},
+                    {"user_id": user_id},
+                ]
+            }
+        )
 
         logger.info(
-            "[vector_repository] 删除完成 document_id=%s 删除chunk数=%s",
+            "[sources_cleanup] removed chunks count=%s document_id=%s",
+            len(ids),
             document_id,
-            len(ids)
         )
 
         return len(ids)
@@ -212,6 +224,17 @@ def query_similar_chunks(
             "metadata": metas[i] if i < len(metas) else {},
             "distance": dists[i] if i < len(dists) else None,
         })
+    for i, item in enumerate(combined, start=1):
+        meta = item.get("metadata", {}) or {}
+        preview = (item.get("text", "") or "").replace("\n", " ")[:120]
+        logger.debug(
+            "[vector_repository] raw_order rank=%s distance=%s filename=%s chunk_index=%s preview=%r",
+            i,
+            item.get("distance"),
+            meta.get("filename"),
+            meta.get("chunk_index"),
+            preview,
+        )
 
     # 去重
     seen_texts = set()
@@ -227,5 +250,16 @@ def query_similar_chunks(
     unique_results.sort(
         key=lambda x: x["distance"] if x["distance"] is not None else float("inf")
     )
+    for i, item in enumerate(unique_results, start=1):
+        meta = item.get("metadata", {}) or {}
+        preview = (item.get("text", "") or "").replace("\n", " ")[:120]
+        logger.debug(
+            "[vector_repository] sorted_order rank=%s distance=%s filename=%s chunk_index=%s preview=%r",
+            i,
+            item.get("distance"),
+            meta.get("filename"),
+            meta.get("chunk_index"),
+            preview,
+        )
 
     return unique_results[:top_k]

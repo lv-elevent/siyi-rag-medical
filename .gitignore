@@ -1,5 +1,6 @@
 # 环境变量
 .env
+.env.docker
 
 # Python
 __pycache__/
@@ -36,10 +37,12 @@ env/
 *.swo
 *~
 .DS_Store
+.cursor/
 
 # 项目特定
 uploads/
 chroma_db/
+chroma_db_backup*/
 
 # 日志
 *.log
@@ -62,3 +65,18 @@ htmlcov/
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# Docker
+docker-compose.override.yml
+
+# Node / frontend build artifacts
+node_modules/
+frontend-vue/node_modules/
+frontend-vue/dist/
+frontend-vue/.vite/
+
+# Local evaluation artifacts
+cleaning_eval_report.json
+backend/scripts/retrieval_eval_report_*.json
+backend/scripts/cleaning_eval_report*.json
+backend/scripts/cleaning_inspect_*.txt

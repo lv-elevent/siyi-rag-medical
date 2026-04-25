@@ -1,16 +1,17 @@
-import os
 import math
 import logging
 from typing import List
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# 加载环境变量
+from backend.core import config
+
+# 保留 dotenv 行为，兼容现有启动方式
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
+OPENAI_API_KEY = config.OPENAI_API_KEY
+OPENAI_BASE_URL = config.OPENAI_BASE_URL
+EMBEDDING_MODEL = config.EMBEDDING_MODEL
 
 if not OPENAI_API_KEY:
     raise ValueError("缺少环境变量 OPENAI_API_KEY")
@@ -25,7 +26,6 @@ client = OpenAI(
 
 logger = logging.getLogger(__name__)
 
-# ✅ 最大 batch（关键参数）
 MAX_BATCH_SIZE = 32
 
 
@@ -74,7 +74,6 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
     logger.info(f"[embedding_client] 开始批量 embedding，总数={total}")
 
-    # ✅ 分批处理
     for i in range(0, total, MAX_BATCH_SIZE):
         batch = cleaned_texts[i:i + MAX_BATCH_SIZE]
 
@@ -90,7 +89,6 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
         all_embeddings.extend(normalized_embeddings)
 
-        # 打印第一条用于监控
         if normalized_embeddings:
             logger.info(
                 "[embedding_client] batch 完成 size=%s dim=%s norm_before=%.6f norm_after=%.6f",

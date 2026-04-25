@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.models.chat import ChatRequest, ChatResponse
 from backend.services.agent.medical_agent import MedicalAgent
+from backend.services.agent.agent_controller import AgentController
 from backend.services.retrieval_service import semantic_search
 from backend.services.knowledge_service import get_or_create_default_kb, ensure_document_link
 from backend.core.llm_client import generate_answer_with_llm
@@ -27,7 +28,6 @@ import uuid
 import re
 
 logger = setup_logger(__name__, logging.INFO)
-
 router = APIRouter()
 
 
@@ -35,7 +35,7 @@ def normalize_llm_answer(text: str) -> str:
     if not text:
         return text
 
-    text = text.strip()
+    text = str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
 
     # 统一中英文引号
     text = text.replace("“", '"').replace("”", '"')
@@ -85,6 +85,17 @@ def normalize_llm_answer(text: str) -> str:
     text = re.sub(r'^\s*三[\.、]\s*', '3. ', text, flags=re.MULTILINE)
     text = re.sub(r'^\s*四[\.、]\s*', '4. ', text, flags=re.MULTILINE)
     text = re.sub(r'^\s*五[\.、]\s*', '5. ', text, flags=re.MULTILINE)
+
+    # 清理流式拼接中偶发的角色残片行（如 "用户" / "user" / "assistant"）
+    text = re.sub(
+        r'^\s*(\d+\s*)?(user|assistant|用户|助手)\s*$',
+        '',
+        text,
+        flags=re.IGNORECASE | re.MULTILINE
+    )
+
+    # 清理中文之间被异常插入的空白（如 "眼 肌麻痹" -> "眼肌麻痹"）
+    text = re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])', '', text)
 
     # 清理行尾多余空格
     text = re.sub(r'[ \t]+$', '', text, flags=re.MULTILINE)
@@ -580,7 +591,7 @@ async def chat(
             logger.warning("[chat] LLM 返回为空")
             return reject_answer()
 
-        answer_body = answer_body.strip()
+        answer_body = normalize_llm_answer(answer_body.strip())
 
         answer_body, is_safe, warnings = safety_filter(
             answer_body,
@@ -711,6 +722,28 @@ async def chat_stream(
                 retrieval_kb_id,
             )
 
+            agent_controller = AgentController()
+            # 先做路由分流，避免非医疗问题进入医疗检索链路
+            route_result = agent_controller.router.route(question)
+            route_type = route_result.get("type", "medical")
+            logger.info("[chat_stream] route_type=%s", route_type)
+
+            if route_type in {"high_risk", "chitchat", "out_of_scope"}:
+                controller_result = agent_controller.handle(
+                    query=question,
+                    user_id=current_user.id,
+                    session_id=session.session_id,
+                    document_id=request.document_id,
+                    knowledge_base_id=kb.id,
+                    allowed_doc_ids=allowed_doc_ids,
+                )
+                answer = controller_result.get("answer", "") or "我是思医医疗知识库助手。"
+
+                # 按现有 SSE 协议输出
+                yield f"data: {json.dumps({'type': 'chunk', 'data': answer}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'sources', 'data': controller_result.get('sources', []) or []}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             agent = MedicalAgent()
             prepare_result = agent.prepare(
                 question=question,
@@ -732,9 +765,8 @@ async def chat_stream(
             )
 
             logger.info(
-                "[chat_stream] full_context_length=%s | full_context_preview=%s",
-                len(prepare_result.full_context or ""),
-                (prepare_result.full_context or "")[:500]
+                "[chat_stream] full_context_length=%s",
+                len(prepare_result.full_context or "")
             )
 
             if prepare_result.status == "error":
@@ -779,7 +811,7 @@ async def chat_stream(
                 or prepare_result.question
             )
 
-            logger.info("[chat_stream] answer_question=%s", answer_question)
+            logger.debug("[chat_stream] answer_question=%s", answer_question)
 
             for token in generate_answer_with_llm_stream(
                 question=answer_question,
@@ -795,7 +827,6 @@ async def chat_stream(
                 await asyncio.sleep(0)
 
             final_answer = normalize_llm_answer(accumulated_answer.strip())
-            logger.info("[chat_stream] final_answer raw:\n%s", final_answer)
             logger.info("[chat_stream] final_answer length=%s", len(final_answer.strip()) if final_answer else 0)
 
             # ===== 流式答案有效性校验 =====
@@ -814,12 +845,11 @@ async def chat_stream(
                 prepare_result.query_type
             )
             logger.info("[chat_stream] after safety_filter | is_safe=%s | warnings=%s", is_safe, warnings)
-            logger.info("[chat_stream] final_answer after safety:\n%s", final_answer)
 
             if warnings:
                 logger.warning("[chat_stream] 安全过滤 warnings: %s", warnings)
 
-            logger.info(
+            logger.debug(
                 "[chat_stream] fallback_check | is_safe=%s | empty=%s | too_short=%s | has_reject_text=%s",
                 is_safe,
                 (not final_answer),

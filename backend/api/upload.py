@@ -2,6 +2,7 @@ from uuid import uuid4
 import os
 import logging
 
+from backend.core import config
 from fastapi import APIRouter, File, HTTPException, UploadFile, status, Depends, Form
 
 from backend.models.upload import UploadResponse
@@ -10,10 +11,11 @@ from backend.services.document_processor import process_document
 from backend.services.knowledge_registry import (
     calculate_file_hash_from_bytes,
     registry_get,
+    registry_delete,
 )
 from backend.core.security import get_current_user
 from backend.database.session import get_db
-from backend.database.models import KnowledgeBase
+from backend.database.models import KnowledgeBase, Document
 from backend.services.knowledge_service import (
     get_or_create_default_kb,
     create_document,
@@ -27,7 +29,7 @@ logger = setup_logger(__name__, logging.INFO)
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = config.UPLOAD_DIR
 
 # ✅ 支持的文件类型
 ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md", ".docx"]
@@ -37,6 +39,7 @@ ALLOWED_EXTENSIONS = [".pdf", ".txt", ".md", ".docx"]
 async def upload_file(
     file: UploadFile = File(...),
     knowledge_base_id: int | None = Form(default=None),
+    force_upload: bool = Form(default=False),
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> UploadResponse:
@@ -67,16 +70,41 @@ async def upload_file(
         # 3️⃣ 计算 hash（去重）
         # =========================
         file_hash = calculate_file_hash_from_bytes(contents)
-
-        existing_doc = registry_get(file_hash, user_id=current_user.id)
+        existing_doc = registry_get(file_hash, user_id=current_user.id) if not force_upload else None
+        logger.info("[upload] hash=%s exists=%s", file_hash, bool(existing_doc))
+        document_deleted = False
         if existing_doc:
-            logger.info(f"[upload] 文件已存在，document_id={existing_doc['document_id']}")
-            return UploadResponse(
-                document_id=existing_doc["document_id"],
-                filename=existing_doc["filename"],
-                status="success",
-                message="文件已存在，直接使用已有知识库",
-            )
+            doc_db_id = existing_doc.get("doc_id")
+            db_doc = None
+            if doc_db_id is not None:
+                try:
+                    db_doc = (
+                        db.query(Document)
+                        .filter(
+                            Document.id == int(doc_db_id),
+                            Document.user_id == current_user.id,
+                        )
+                        .first()
+                    )
+                except (TypeError, ValueError):
+                    db_doc = None
+
+            document_deleted = db_doc is None
+
+            if not document_deleted:
+                logger.info(f"[upload] 文件已存在，document_id={existing_doc['document_id']}")
+                return UploadResponse(
+                    document_id=existing_doc["document_id"],
+                    filename=existing_doc["filename"],
+                    status="success",
+                    message="文件已存在，直接使用已有知识库",
+                )
+
+            # registry 命中但 DB 文档已删除：清理旧映射并允许重传
+            old_vector_doc_id = existing_doc.get("document_id")
+            if old_vector_doc_id:
+                registry_delete(old_vector_doc_id, user_id=current_user.id)
+        logger.info("[upload] document_deleted=%s", document_deleted)
 
         # =========================
         # 4️⃣ 保存文件

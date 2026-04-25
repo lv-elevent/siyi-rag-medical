@@ -101,6 +101,12 @@ ANATOMY_KNOWLEDGE_KEYWORDS: Set[str] = {
     "动脉", "静脉", "神经", "肌肉", "骨", "关节", "韧带", "筋膜", "腔隙",
 }
 
+SUBJECT_TERMS: Set[str] = {
+    "传染病学",
+    "解剖学", "局部解剖学", "系统解剖学",
+    "药理学", "生理学", "病理学", "免疫学", "微生物学", "组织学",
+}
+
 MEDICAL_ACTION_KEYWORDS: Set[str] = {
     "看医生", "看病", "就医", "就诊", "挂号", "科室", "医院", "门诊", "急诊",
     "手术", "动手术", "做手术", "检查", "化验", "体检", "复查", "诊断",
@@ -302,6 +308,31 @@ def classify_medical_question(query: str) -> str:
         return "other"
 
     # -----------------------------------------------------
+    # 0. 医学学科术语优先 knowledge（高优先级）
+    # -----------------------------------------------------
+    if query in SUBJECT_TERMS:
+        logger.info("[classifier] 学科术语精确命中 -> knowledge: %s", original_query)
+        logger.info("[classifier] FINAL -> knowledge | question=%s", original_query)
+        return "knowledge"
+
+    has_subject_term = _contains_any(query, SUBJECT_TERMS)
+    has_knowledge_ask = any(
+        x in query for x in [
+            "包括什么", "包含什么", "有哪些", "组成", "构成", "分类", "分型",
+            "定义", "概念", "是什么",
+        ]
+    )
+    if has_subject_term and has_knowledge_ask:
+        logger.info("[classifier] 学科词 + 知识问法 -> knowledge: %s", original_query)
+        logger.info("[classifier] FINAL -> knowledge | question=%s", original_query)
+        return "knowledge"
+
+    if has_subject_term and len(query) <= 8:
+        logger.info("[classifier] 学科术语 + 短query -> knowledge: %s", original_query)
+        logger.info("[classifier] FINAL -> knowledge | question=%s", original_query)
+        return "knowledge"
+
+    # -----------------------------------------------------
     # 1. 强规则优先
     # -----------------------------------------------------
     if _check_rules(query, MEDICAL_RULES):
@@ -401,6 +432,12 @@ def _demo_test_cases() -> Tuple[int, int]:
         ("结核病的危害", "knowledge"),
         ("解剖学的概念", "knowledge"),
         ("局部解剖学是什么意思", "knowledge"),
+        ("解剖学", "knowledge"),
+        ("局部解剖学", "knowledge"),
+        ("药理学", "knowledge"),
+        ("病理学", "knowledge"),
+        ("传染病学包括什么", "knowledge"),
+        ("传染病学有哪些内容", "knowledge"),
 
         # other
         ("今天天气怎么样", "other"),

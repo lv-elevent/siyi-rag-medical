@@ -1,0 +1,212 @@
+[
+  {
+    "query": "结核病的危害有哪些？",
+    "query_type": "medical",
+    "expected_keywords": ["结核病", "危害", "传播", "肺部", "并发症"],
+    "expected_docs": ["传染病学", "结核病防治手册"],
+    "expected_doc_aliases": ["传染病学", "传染病学导论", "传染病学【终版】", "结核病防治手册", "结核病——世界卫生组织", "世界卫生组织"]
+  },
+  {
+    "query": "什么是局部解剖学？",
+    "query_type": "knowledge",
+    "expected_keywords": ["局部解剖学", "区域", "器官", "结构", "毗邻关系"],
+    "expected_docs": ["解剖学", "系统解剖与局部解剖学笔记"],
+    "expected_doc_aliases": ["解剖学", "局部解剖学", "系统解剖", "系统解剖与局部解剖学笔记"]
+  },
+  {
+    "query": "传染病学包括什么内容？",
+    "query_type": "knowledge",
+    "expected_keywords": ["传染病学", "病原体", "流行病学", "预防", "控制"],
+    "expected_docs": ["传染病学", "传染病学导论"],
+    "expected_doc_aliases": ["传染病学", "传染病学导论", "传染病学终版", "传染病学【终版】"]
+  },
+  {
+    "query": "高血压如何防治？",
+    "query_type": "medical",
+    "expected_keywords": ["高血压", "防治", "生活方式", "降压药", "随访"],
+    "expected_docs": ["高血压指南", "心血管疾病防治"],
+    "expected_doc_aliases": ["高血压", "高血压指南", "高血压防治", "基层医疗卫生机构高血压防治管理标准", "心血管疾病防治"]
+  },
+  {
+    "query": "药理学包括什么？",
+    "query_type": "knowledge",
+    "expected_keywords": ["药理学", "药效学", "药动学", "不良反应", "临床用药"],
+    "expected_docs": ["药理学", "临床药理学基础"],
+    "expected_doc_aliases": ["药理学", "临床药理学基础", "药理1-7章", "附件：药理1-7章"]
+  },
+  {
+    "query": "这份高血压指南讲了哪些防治措施？",
+    "query_type": "document_qa",
+    "expected_keywords": ["高血压指南", "防治措施", "限盐", "运动", "药物治疗"],
+    "expected_docs": ["高血压指南"],
+    "expected_doc_aliases": ["高血压指南", "高血压防治", "基层医疗卫生机构高血压防治管理标准"]
+  },
+  {
+    "query": "结核病主要通过什么途径传播？",
+    "query_type": "medical",
+    "expected_keywords": ["结核病", "传播途径", "飞沫", "空气传播", "密切接触"],
+    "expected_docs": ["传染病学", "结核病防治手册"],
+    "expected_doc_aliases": ["结核病", "结核病防治手册", "结核病——世界卫生组织", "传染病学", "传染病学【终版】"]
+  },
+  {
+    "query": "结核病常见临床表现有哪些？",
+    "query_type": "medical",
+    "expected_keywords": ["结核病", "临床表现", "咳嗽", "低热", "盗汗"],
+    "expected_docs": ["结核病防治手册", "呼吸系统疾病学"],
+    "expected_doc_aliases": ["结核病", "结核病防治手册", "结核病——世界卫生组织", "呼吸系统疾病学"]
+  },
+  {
+    "query": "高血压患者日常饮食需要注意什么？",
+    "query_type": "medical",
+    "expected_keywords": ["高血压", "饮食", "限盐", "低脂", "钾摄入"],
+    "expected_docs": ["高血压指南", "慢病管理手册"],
+    "expected_doc_aliases": ["高血压", "高血压指南", "高血压防治", "基层医疗卫生机构高血压防治管理标准", "慢病管理手册"]
+  },
+  {
+    "query": "高血压的一线降压药有哪些类别？",
+    "query_type": "medical",
+    "expected_keywords": ["高血压", "一线用药", "ACEI", "ARB", "钙通道阻滞剂"],
+    "expected_docs": ["高血压指南", "药理学"],
+    "expected_doc_aliases": ["高血压", "高血压指南", "基层医疗卫生机构高血压防治管理标准", "药理学", "药理1-7章", "附件：药理1-7章"]
+  },
+  {
+    "query": "传染病的三级预防分别是什么？",
+    "query_type": "knowledge",
+    "expected_keywords": ["传染病", "三级预防", "一级预防", "二级预防", "三级预防"],
+    "expected_docs": ["传染病学", "公共卫生学"],
+    "expected_doc_aliases": ["传染病", "传染病学", "传染病学【终版】", "传染病学导论", "公共卫生学"]
+  },
+  {
+    "query": "药动学主要研究哪些过程？",
+    "query_type": "knowledge",
+    "expected_keywords": ["药动学", "吸收", "分布", "代谢", "排泄"],
+    "expected_docs": ["药理学", "临床药理学基础"],
+    "expected_doc_aliases": ["药动学", "药理学", "临床药理学基础", "药理1-7章", "附件：药理1-7章"]
+  },
+  {
+    "query": "药效学和药动学有什么区别？",
+    "query_type": "knowledge",
+    "expected_keywords": ["药效学", "药动学", "作用机制", "血药浓度", "机体反应"],
+    "expected_docs": ["药理学", "临床药理学基础"],
+    "expected_doc_aliases": ["药效学", "药动学", "药理学", "临床药理学基础", "药理1-7章", "附件：药理1-7章"]
+  },
+  {
+    "query": "局部解剖学在临床手术中有什么意义？",
+    "query_type": "knowledge",
+    "expected_keywords": ["局部解剖学", "手术", "解剖层次", "血管神经", "并发症"],
+    "expected_docs": ["解剖学", "外科学基础"],
+    "expected_doc_aliases": ["解剖学", "局部解剖学", "系统解剖与局部解剖学笔记", "外科学基础"]
+  },
+  {
+    "query": "解剖学里上肢主要包括哪些结构？",
+    "query_type": "knowledge",
+    "expected_keywords": ["上肢", "骨骼", "肌肉", "血管", "神经"],
+    "expected_docs": ["解剖学", "系统解剖与局部解剖学笔记"],
+    "expected_doc_aliases": ["解剖学", "系统解剖", "系统解剖与局部解剖学笔记", "上肢"]
+  },
+  {
+    "query": "这份传染病学资料里提到的法定传染病分类是什么？",
+    "query_type": "document_qa",
+    "expected_keywords": ["法定传染病", "甲类", "乙类", "丙类", "分类管理"],
+    "expected_docs": ["传染病学", "传染病学导论"],
+    "expected_doc_aliases": ["传染病学", "传染病学导论", "传染病学【终版】", "法定传染病"]
+  },
+  {
+    "query": "这份药理学讲义对不良反应是怎么定义的？",
+    "query_type": "document_qa",
+    "expected_keywords": ["药理学", "不良反应", "定义", "剂量", "毒性"],
+    "expected_docs": ["药理学", "临床药理学基础"],
+    "expected_doc_aliases": ["药理学", "临床药理学基础", "药理1-7章", "附件：药理1-7章", "不良反应"]
+  },
+  {
+    "query": "高血压指南中生活方式干预包含哪些条目？",
+    "query_type": "document_qa",
+    "expected_keywords": ["高血压指南", "生活方式干预", "减重", "运动", "戒烟限酒"],
+    "expected_docs": ["高血压指南"],
+    "expected_doc_aliases": ["高血压指南", "高血压防治", "基层医疗卫生机构高血压防治管理标准", "生活方式干预"]
+  },
+  {
+    "query": "结核病防治手册里推荐的筛查方式有哪些？",
+    "query_type": "document_qa",
+    "expected_keywords": ["结核病", "筛查", "胸片", "痰检", "结核菌检测"],
+    "expected_docs": ["结核病防治手册"],
+    "expected_doc_aliases": ["结核病防治手册", "结核病——世界卫生组织", "世界卫生组织", "结核病"]
+  },
+  {
+    "query": "传染病学导论中对基本再生数R0是如何解释的？",
+    "query_type": "document_qa",
+    "expected_keywords": ["R0", "基本再生数", "传播能力", "流行", "阈值"],
+    "expected_docs": ["传染病学导论"],
+    "expected_doc_aliases": ["传染病学导论", "传染病学", "传染病学【终版】", "R0", "基本再生数"]
+  },
+  {
+    "query": "药理学资料中常见给药途径有哪些？",
+    "query_type": "document_qa",
+    "expected_keywords": ["给药途径", "口服", "静脉", "肌注", "外用"],
+    "expected_docs": ["药理学"],
+    "expected_doc_aliases": ["药理学", "药理1-7章", "附件：药理1-7章", "给药途径"]
+  },
+  {
+    "query": "解剖学笔记中胸腔包含哪些主要结构？",
+    "query_type": "document_qa",
+    "expected_keywords": ["胸腔", "肺", "心脏", "纵隔", "胸膜"],
+    "expected_docs": ["解剖学", "系统解剖与局部解剖学笔记"],
+    "expected_doc_aliases": ["解剖学", "系统解剖与局部解剖学笔记", "胸腔", "纵隔"]
+  },
+  {
+    "query": "高血压患者何时需要联合用药？",
+    "query_type": "medical",
+    "expected_keywords": ["高血压", "联合用药", "血压控制", "达标", "风险分层"],
+    "expected_docs": ["高血压指南", "药理学"],
+    "expected_doc_aliases": ["高血压", "高血压指南", "基层医疗卫生机构高血压防治管理标准", "药理学", "药理1-7章", "附件：药理1-7章", "联合用药"]
+  },
+  {
+    "query": "高血压引起的靶器官损害包括哪些？",
+    "query_type": "medical",
+    "expected_keywords": ["高血压", "靶器官损害", "心脏", "肾脏", "脑血管"],
+    "expected_docs": ["高血压指南", "心血管疾病防治"],
+    "expected_doc_aliases": ["高血压", "高血压指南", "基层医疗卫生机构高血压防治管理标准", "心血管疾病防治", "靶器官损害"]
+  },
+  {
+    "query": "结核病治疗为什么强调规律全程用药？",
+    "query_type": "medical",
+    "expected_keywords": ["结核病", "规律用药", "全程治疗", "耐药", "复发"],
+    "expected_docs": ["结核病防治手册", "传染病学"],
+    "expected_doc_aliases": ["结核病", "结核病防治手册", "结核病——世界卫生组织", "传染病学", "传染病学【终版】", "规律用药", "全程治疗"]
+  },
+  {
+    "query": "疑似传染病患者的隔离原则有哪些？",
+    "query_type": "medical",
+    "expected_keywords": ["疑似传染病", "隔离", "标准预防", "接触隔离", "飞沫隔离"],
+    "expected_docs": ["传染病学", "医院感染管理规范"],
+    "expected_doc_aliases": ["传染病", "传染病学", "传染病学【终版】", "医院感染管理规范", "隔离原则"]
+  },
+  {
+    "query": "抗高血压药物常见不良反应有哪些？",
+    "query_type": "medical",
+    "expected_keywords": ["抗高血压药", "不良反应", "低血压", "电解质紊乱", "咳嗽"],
+    "expected_docs": ["药理学", "高血压指南"],
+    "expected_doc_aliases": ["抗高血压药", "不良反应", "药理学", "药理1-7章", "附件：药理1-7章", "高血压指南", "基层医疗卫生机构高血压防治管理标准"]
+  },
+  {
+    "query": "药理学中受体激动剂和拮抗剂有什么区别？",
+    "query_type": "knowledge",
+    "expected_keywords": ["受体激动剂", "拮抗剂", "受体结合", "药效", "机制"],
+    "expected_docs": ["药理学", "临床药理学基础"],
+    "expected_doc_aliases": ["药理学", "临床药理学基础", "药理1-7章", "附件：药理1-7章", "受体激动剂", "拮抗剂"]
+  },
+  {
+    "query": "传染病学与流行病学的关系是什么？",
+    "query_type": "knowledge",
+    "expected_keywords": ["传染病学", "流行病学", "监测", "人群", "传播规律"],
+    "expected_docs": ["传染病学", "公共卫生学"],
+    "expected_doc_aliases": ["传染病学", "传染病学【终版】", "传染病学导论", "流行病学", "公共卫生学"]
+  },
+  {
+    "query": "解剖学中体循环和肺循环的主要路径是什么？",
+    "query_type": "knowledge",
+    "expected_keywords": ["体循环", "肺循环", "左心室", "右心室", "血液循环"],
+    "expected_docs": ["解剖学", "生理学基础"],
+    "expected_doc_aliases": ["解剖学", "系统解剖与局部解剖学笔记", "生理学基础", "体循环", "肺循环"]
+  }
+]
