@@ -57,6 +57,22 @@ def _kb():
 def _route_patches(route_type: str):
     handle_mock = Mock(return_value={"answer": "mocked", "type": route_type, "source": "llm"})
     route_mock = Mock(return_value={"type": route_type, "reason": "rule"})
+    process_mock = Mock(
+        return_value=chat_api.ChatResponse(
+            answer="mocked",
+            query_type=route_type,
+            rewritten_query="",
+            sources=[],
+            needs_followup=False,
+            followup_question="",
+            status="success",
+            session_id="s_test",
+        )
+    )
+    controller_instance = SimpleNamespace(
+        handle=handle_mock,
+        router=SimpleNamespace(route=route_mock),
+    )
     return patch.multiple(
         "backend.api.chat",
         get_or_create_default_kb=lambda db, user: _kb(),
@@ -64,52 +80,50 @@ def _route_patches(route_type: str):
         save_user_message=lambda *args, **kwargs: None,
         save_assistant_message=lambda *args, **kwargs: None,
         get_kb_allowed_doc_ids=lambda *args, **kwargs: [101],
-        agent_controller=SimpleNamespace(
-            handle=handle_mock,
-            router=SimpleNamespace(route=route_mock),
-        ),
-    ), handle_mock, route_mock
+        AgentController=Mock(return_value=controller_instance),
+        MedicalAgent=Mock(return_value=SimpleNamespace(process=process_mock)),
+    ), handle_mock, route_mock, process_mock
 
 
 def test_chat_route_high_risk_skips_medical_agent():
     client = _build_test_client()
-    patched, handle_mock, _ = _route_patches("high_risk")
+    patched, _, _, process_mock = _route_patches("high_risk")
     with patched:
         response = client.post("/chat", json={"question": "安眠药吃多少会死", "use_agent": True})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["query_type"] == "high_risk"
-    assert handle_mock.call_count == 1
+    assert process_mock.call_count == 1
 
 
 def test_chat_route_chitchat_skips_medical_agent():
     client = _build_test_client()
-    patched, handle_mock, _ = _route_patches("chitchat")
+    patched, _, _, process_mock = _route_patches("chitchat")
     with patched:
         response = client.post("/chat", json={"question": "你好", "use_agent": True})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["query_type"] == "chitchat"
-    assert handle_mock.call_count == 1
+    assert process_mock.call_count == 1
 
 
 def test_chat_route_out_of_scope_skips_medical_agent():
     client = _build_test_client()
-    patched, handle_mock, _ = _route_patches("out_of_scope")
+    patched, _, _, process_mock = _route_patches("out_of_scope")
     with patched:
         response = client.post("/chat", json={"question": "帮我写Python代码", "use_agent": True})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["query_type"] == "out_of_scope"
-    assert handle_mock.call_count == 1
+    assert process_mock.call_count == 1
 
 
 def test_chat_stream_high_risk_skips_medical_agent_prepare():
     client = _build_test_client()
-    patched, handle_mock, route_mock = _route_patches("high_risk")
+    patched, handle_mock, route_mock, _ = _route_patches("high_risk")
     with patched:
         response = client.post("/chat-stream", json={"question": "安眠药吃多少会死", "use_agent": True})
 
@@ -121,7 +135,7 @@ def test_chat_stream_high_risk_skips_medical_agent_prepare():
 
 def test_chat_stream_out_of_scope_skips_medical_agent_prepare():
     client = _build_test_client()
-    patched, handle_mock, route_mock = _route_patches("out_of_scope")
+    patched, handle_mock, route_mock, _ = _route_patches("out_of_scope")
     with patched:
         response = client.post("/chat-stream", json={"question": "帮我写Python代码", "use_agent": True})
 
@@ -149,10 +163,10 @@ def test_chat_stream_medical_has_chunk_and_sources():
         save_user_message=lambda *args, **kwargs: None,
         save_assistant_message=lambda *args, **kwargs: None,
         get_kb_allowed_doc_ids=lambda *args, **kwargs: [101],
-        agent_controller=SimpleNamespace(
+        AgentController=Mock(return_value=SimpleNamespace(
             handle=Mock(),
             router=SimpleNamespace(route=Mock(return_value={"type": "medical", "reason": "rule"})),
-        ),
+        )),
         MedicalAgent=Mock(return_value=SimpleNamespace(prepare=Mock(return_value=prepare_result))),
         generate_answer_with_llm_stream=Mock(return_value=iter(["第一段", "第二段"])),
     )
