@@ -279,13 +279,11 @@ async function uploadFileToBackend(file, kbId = null) {
 
     let result = null;
     try {
-        // 1. 先解析出 result
         result = await response.json();
     } catch (error) {
         throw new Error('服务器返回的不是有效 JSON');
     }
 
-    // 2. 解析完成后，再调用这个方法！（顺序修正）
     window.handleAuthError?.(response, result);
 
     if (!response.ok) {

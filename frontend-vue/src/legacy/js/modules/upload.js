@@ -41,7 +41,6 @@ async function handleFile(file) {
         const result = await window.uploadFileToBackend(file, window.state.currentKbId || null);
 
         if (result.status === 'success') {
-            // 上传成功先提示
             window.updateState({
                 uploadedFileName: result.filename || file.name,
                 uploadStatus: 'success'
@@ -51,7 +50,6 @@ async function handleFile(file) {
             window.showUploadStatus(`上传成功：${result.filename || file.name}`, 'success');
             window.showToast(`文件 "${result.filename || file.name}" 上传成功`, 'success');
 
-            // 再刷新文件列表
             try {
                 await window.fetchKnowledgeFiles();
                 window.renderKnowledgeFiles(window.elements.fileSearch?.value || '');
@@ -117,7 +115,6 @@ function setUploadAreaDisabled(disabled) {
     window.elements.uploadArea.style.opacity = disabled ? '0.7' : '1';
 }
 
-// 挂到 window 上供原 script.js 使用
 window.handleFileUpload = handleFileUpload;
 window.handleFile = handleFile;
 window.renderUploadPreview = renderUploadPreview;

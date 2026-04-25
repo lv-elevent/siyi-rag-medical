@@ -4,9 +4,79 @@
 window.state.kbs = Array.isArray(window.state.kbs) ? window.state.kbs : [];
 window.state.currentKbId = window.state.currentKbId || null;
 
-/**
- * 渲染知识库网格
- */
+function getCurrentKbLabel() {
+    return window.state.currentLibraryName || "全库";
+}
+
+function renderKbSelectorMenu() {
+    const menu = document.getElementById("kbSelectorMenu");
+    if (!menu) return;
+
+    const currentKbId = window.state.currentKbId ? String(window.state.currentKbId) : "";
+    const kbs = Array.isArray(window.state.kbs) ? window.state.kbs : [];
+
+    const allClass = currentKbId ? "" : "active";
+    menu.innerHTML = `
+        <div class="kb-selector-item ${allClass}" data-kb-id="">
+            全库
+        </div>
+        ${kbs.map(kb => {
+            const activeClass = currentKbId === String(kb.id) ? "active" : "";
+            return `<div class="kb-selector-item ${activeClass}" data-kb-id="${kb.id}" data-kb-name="${window.escapeHtml(kb.name || "")}">${window.escapeHtml(kb.name || "未命名知识库")}</div>`;
+        }).join("")}
+    `;
+
+    menu.querySelectorAll(".kb-selector-item").forEach(item => {
+        item.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const kbId = item.dataset.kbId || "";
+            const kbName = item.dataset.kbName || "";
+            if (!kbId) {
+                window.state.currentKbId = null;
+                window.setCurrentLibrary(null);
+                if (typeof window.fetchKnowledgeFiles === "function") {
+                    await window.fetchKnowledgeFiles();
+                }
+            } else {
+                await openLibraryById(kbId, kbName);
+                if (typeof window.fetchKnowledgeFiles === "function") {
+                    await window.fetchKnowledgeFiles();
+                }
+            }
+            closeKbSelectorMenu();
+        });
+    });
+}
+
+function closeKbSelectorMenu() {
+    const menu = document.getElementById("kbSelectorMenu");
+    const trigger = document.getElementById("currentKbBadge");
+    if (!menu || !trigger) return;
+    menu.classList.remove("show");
+    trigger.setAttribute("aria-expanded", "false");
+}
+
+function setupKbSelector() {
+    const trigger = document.getElementById("currentKbBadge");
+    const menu = document.getElementById("kbSelectorMenu");
+    if (!trigger || !menu || trigger.dataset.bound === "1") return;
+
+    trigger.dataset.bound = "1";
+    trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        renderKbSelectorMenu();
+        const opening = !menu.classList.contains("show");
+        menu.classList.toggle("show", opening);
+        trigger.setAttribute("aria-expanded", opening ? "true" : "false");
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!menu.classList.contains("show")) return;
+        if (menu.contains(e.target) || trigger.contains(e.target)) return;
+        closeKbSelectorMenu();
+    });
+}
+
 function renderKbGrid() {
     if (!window.elements.kbGrid) return;
 
@@ -34,9 +104,6 @@ function renderKbGrid() {
     });
 }
 
-/**
- * 创建新知识库
- */
 function createNewLibrary() {
     window.openInputModal({
         title: '新建知识库',
@@ -56,9 +123,6 @@ function createNewLibrary() {
     });
 }
 
-/**
- * 打开知识库
- */
 function openLibrary(name) {
     const kb = (window.state.kbs || []).find(item => item.name === name);
     if (!kb) return;
@@ -117,9 +181,6 @@ async function openLibraryById(kbId, kbName) {
     window.openModal('libraryModal');
 }
 
-/**
- * 从知识库中移除文件
- */
 function removeFromLibrary(libraryName, fileName, documentId = null) {
     window.openDeleteModal({
         type: 'remove',
@@ -129,9 +190,6 @@ function removeFromLibrary(libraryName, fileName, documentId = null) {
     });
 }
 
-/**
- * 打开选择文件弹窗
- */
 function openSelectFileModal(libraryName) {
     const library = window.findLibraryByName(libraryName);
     if (!library) {
@@ -161,22 +219,15 @@ function openSelectFileModal(libraryName) {
     window.openModal('selectFileModal');
 }
 
-/**
- * 删除文档
- */
 async function deleteDocument(documentId, filename) {
     window.openDeleteModal({
         type: 'delete_document',
         documentId,
         filename,
-        // 新增：确认后调用真实请求
         onConfirm: () => confirmDeleteDocument(documentId)
     });
 }
 
-/**
- * 设置当前知识库
- */
 function setCurrentLibrary(name) {
     window.state.currentLibraryName = name || null;
     const targetKb = (window.state.kbs || []).find(item => item.name === window.state.currentLibraryName);
@@ -184,18 +235,16 @@ function setCurrentLibrary(name) {
     localStorage.setItem('rag_current_library', window.state.currentLibraryName || '');
 
     if (window.elements.currentKbBadge) {
-        window.elements.currentKbBadge.textContent = `当前知识库：${window.state.currentLibraryName || '未选择'}`;
+        window.elements.currentKbBadge.innerHTML = `当前知识库：${window.escapeHtml(getCurrentKbLabel())}<span class="kb-selector-caret">▼</span>`;
     }
     if (window.elements.sidebarCurrentKb) {
         window.elements.sidebarCurrentKb.textContent = window.state.currentLibraryName || '未选择';
     }
 
     window.renderKbGrid();
+    renderKbSelectorMenu();
 }
 
-/**
- * 按名称查找知识库
- */
 function findLibraryByName(name) {
     const kb = (window.state.kbs || []).find(item => item.name === name);
     if (!kb) return null;
@@ -205,15 +254,12 @@ function findLibraryByName(name) {
     };
 }
 
-/**
- * 持久化知识库
- */
 function persistLibraries() {
-    // 兼容旧调用，知识库主数据源已切换为后端 API
     return;
 }
 
 async function fetchKnowledgeBases() {
+    setupKbSelector();
     const result = await window.apiFetchKBs();
     const kbs = Array.isArray(result.knowledge_bases) ? result.knowledge_bases : [];
     window.state.kbs = kbs;
@@ -242,10 +288,14 @@ async function fetchKnowledgeBases() {
     window.state.currentLibraryName = current ? (current.name || null) : null;
     localStorage.setItem('rag_current_library', window.state.currentLibraryName || '');
 
+    if (window.elements.currentKbBadge) {
+        window.elements.currentKbBadge.innerHTML = `当前知识库：${window.escapeHtml(getCurrentKbLabel())}<span class="kb-selector-caret">▼</span>`;
+    }
+
     window.renderKbGrid();
+    renderKbSelectorMenu();
 }
 
-// 挂载到 window 上供外部调用
 window.renderKbGrid = renderKbGrid;
 window.createNewLibrary = createNewLibrary;
 window.openLibrary = openLibrary;
@@ -257,8 +307,6 @@ window.findLibraryByName = findLibraryByName;
 window.persistLibraries = persistLibraries;
 window.fetchKnowledgeBases = fetchKnowledgeBases;
 window.openLibraryById = openLibraryById;
-
-// ===== 知识库相关的检索与文件列表逻辑（从 script.js 迁移） =====
 
 let isFetchingKnowledge = false;
 
@@ -521,7 +569,6 @@ function toggleKnowledgeFilesPanel() {
     window.syncKbToggleButtonText();
 }
 
-// 挂载到 window 以供其他模块使用
 window.fetchKnowledgeFiles = fetchKnowledgeFiles;
 window.renderKnowledgeFiles = renderKnowledgeFiles;
 window.updateKnowledgeBaseStatus = updateKnowledgeBaseStatus;

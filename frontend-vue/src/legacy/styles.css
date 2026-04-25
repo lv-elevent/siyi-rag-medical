@@ -558,37 +558,113 @@ body {
 }
 
 .source-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    width: fit-content;
+    display: block;
+    width: 100%;
     max-width: 100%;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 0;
     background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     box-sizing: border-box;
+    overflow: hidden;
+}
+
+.source-details {
+    width: 100%;
+}
+
+.source-details[open] {
+    animation: sourceExpandFade 0.18s ease-out;
+}
+
+.source-details summary {
+    list-style: none;
+}
+
+.source-details summary::-webkit-details-marker {
+    display: none;
 }
 
 .source-file {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    cursor: pointer;
     color: var(--primary);
     font-weight: 600;
     font-size: 13px;
     line-height: 1.4;
     min-width: 0;
     word-break: break-word;
+    transition: background 0.2s ease;
+}
+
+.source-file:hover {
+    background: rgba(22, 93, 255, 0.08);
+}
+
+.source-file::before {
+    content: "▸";
+    color: var(--text-secondary);
+    font-size: 11px;
+    transform: translateY(-1px);
+    transition: transform 0.18s ease;
+}
+
+.source-details[open] .source-file::before {
+    transform: rotate(90deg) translateY(1px);
+}
+
+.source-file-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.source-hit-badge {
+    flex: 0 0 auto;
+    font-size: 11px;
+    line-height: 1.25;
+    color: var(--text-secondary);
+    background: rgba(22, 93, 255, 0.08);
+    border: 1px solid rgba(22, 93, 255, 0.18);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+
+.source-chunk-list {
+    margin: 0 10px 8px 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    animation: sourceExpandFade 0.2s ease-out;
 }
 
 .source-chunk {
     flex: 0 0 auto;
+    margin: 0;
     font-size: 12px;
     color: var(--text-secondary);
-    background: rgba(22, 93, 255, 0.08);
-    border: 1px solid rgba(22, 93, 255, 0.12);
-    padding: 2px 8px;
+    background: rgba(22, 93, 255, 0.06);
+    border: 1px solid rgba(22, 93, 255, 0.18);
+    padding: 3px 8px;
     border-radius: 999px;
-    line-height: 1.5;
+    line-height: 1.4;
+}
+
+@keyframes sourceExpandFade {
+    from {
+        opacity: 0.45;
+        transform: translateY(-1px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .message-content:empty {
@@ -1702,4 +1778,21 @@ body {
 .delete-btn:hover {
     background: #fee2e2;
     color: #dc2626;
+}
+
+/* 全局统一可点击项 hover：对齐“查看知识文档”手感 */
+.history-item:hover,
+.delete-btn:hover,
+.kb-toggle-btn:hover,
+.create-kb-btn:hover,
+.kb-file-item:hover,
+.kb-file-delete-btn:hover,
+.kb-card:hover,
+.lib-remove-btn:hover,
+.file-item:hover {
+    background: #e3edfd !important;
+    color: #3f66d8 !important;
+    border-color: #d3e1f4 !important;
+    box-shadow: 0 4px 10px rgba(63, 102, 216, 0.12) !important;
+    transform: translateY(-1px) !important;
 }

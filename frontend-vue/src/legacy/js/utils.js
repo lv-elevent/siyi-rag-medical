@@ -41,7 +41,6 @@ function groupSourcesByFile(sources = []) {
     }));
 }
 
-// 挂到 window 上供原 script.js 使用
 window.escapeHtml = escapeHtml;
 window.escapeAttr = escapeAttr;
 window.escapeJs = escapeJs;

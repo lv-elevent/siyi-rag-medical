@@ -8,11 +8,8 @@ function closeModal(modalId) {
     if (modal) modal.classList.remove('show');
 }
 
-// 挂到 window 上供原 script.js 使用
 window.openModal = openModal;
 window.closeModal = closeModal;
-
-// ===== 以下为通用输入与删除模态框逻辑（从 script.js 迁移） =====
 
 function openInputModal({
     title = '请输入内容',
@@ -78,7 +75,6 @@ function openDeleteModal(data) {
     const modal = document.getElementById('deleteModal');
     if (!modal) return;
 
-    // 把数据挂到 DOM（替代全局变量）
     modal.dataset.deletePayload = JSON.stringify(data);
 
     const textEl = document.getElementById('deleteModalText');
@@ -94,11 +90,9 @@ function openDeleteModal(data) {
     modal.style.display = 'flex';
 }
 
-// 挂到 window 以兼容旧调用方式
 window.openInputModal = openInputModal;
 window.openDeleteModal = openDeleteModal;
 
-// 绑定删除模态框的确认/取消按钮处理（保持与原逻辑一致）
 (function bindDeleteModalHandlers() {
     const cancelBtn = document.getElementById('cancelDeleteBtn');
     const confirmBtn = document.getElementById('confirmDeleteBtn');
@@ -121,9 +115,7 @@ window.openDeleteModal = openDeleteModal;
             const data = JSON.parse(payloadStr);
 
             try {
-
                 switch (data.type) {
-
                     case 'delete_library': {
                         const { libraryName } = data;
 
@@ -167,11 +159,11 @@ window.openDeleteModal = openDeleteModal;
                     case 'delete_document': {
                         const { documentId, filename } = data;
                         const numericDocumentId = Number(documentId);
-                    
+
                         if (!Number.isInteger(numericDocumentId) || numericDocumentId <= 0) {
                             throw new Error('document_id 非法');
                         }
-                    
+
                         const response = await fetch(`${window.API_BASE_URL}/knowledge/document/delete`, {
                             method: 'POST',
                             headers: {
@@ -180,16 +172,16 @@ window.openDeleteModal = openDeleteModal;
                             },
                             body: JSON.stringify({ document_id: numericDocumentId })
                         });
-                    
+
                         const result = await response.json().catch(() => ({}));
                         window.handleAuthError?.(response, result);
-                    
+
                         if (!response.ok) throw new Error(result.detail || '删除失败');
-                    
+
                         await window.fetchKnowledgeFiles();
                         window.renderKnowledgeFiles();
                         window.updateUI();
-                    
+
                         window.showToast(`文档"${filename}"删除成功`, 'success');
                         break;
                     }
@@ -199,10 +191,8 @@ window.openDeleteModal = openDeleteModal;
                 window.showToast(error.message || '删除失败', 'error');
             }
 
-            // ✅ 收尾
             modal.style.display = 'none';
             modal.dataset.deletePayload = '';
         });
     }
 })();
-

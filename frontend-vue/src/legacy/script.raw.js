@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = '';
 
 // 确保 marked 可用
 if (typeof marked === 'undefined') {
@@ -113,6 +113,9 @@ const elements = {
 
     showLoginTab: document.getElementById('showLoginTab'),
     showRegisterTab: document.getElementById('showRegisterTab'),
+    authSwitchText: document.getElementById('authSwitchText'),
+    authSwitchLink: document.getElementById('authSwitchLink'),
+    authBackBtn: document.getElementById('authBackBtn'),
 
     loginPanel: document.getElementById('loginPanel'),
     registerPanel: document.getElementById('registerPanel'),
@@ -365,6 +368,11 @@ async function loadMessages(sessionId) {
             content: m.content,
             sources: m.metadata_json?.sources || []
         }));
+        console.info("[sources_debug][frontend.history] messages_from_backend=", msgs);
+        console.info(
+            "[sources_debug][frontend.history] mapped_message_sources=",
+            state.messages.map(m => ({ id: m.id, role: m.role, sources: m.sources }))
+        );
 
         if (window.renderMessages) window.renderMessages();
 
@@ -452,6 +460,10 @@ function showAuthScreen(message = '') {
     if (elements.authScreen) elements.authScreen.style.display = 'flex';
     if (elements.appScreen) elements.appScreen.style.display = 'flex';
     if (elements.authMessage) elements.authMessage.textContent = message || '';
+    if (elements.authBackBtn) {
+        const canBack = !!(state.currentUser && window.getToken?.());
+        elements.authBackBtn.style.display = canBack ? 'inline-block' : 'none';
+    }
 }
 
 function showAppScreen() {
@@ -477,6 +489,13 @@ function switchAuthTab(tab) {
 
     if (elements.showRegisterTab) {
         elements.showRegisterTab.classList.toggle('active', !isLogin);
+    }
+
+    if (elements.authSwitchText) {
+        elements.authSwitchText.textContent = isLogin ? '还没有账号？' : '已有账号？';
+    }
+    if (elements.authSwitchLink) {
+        elements.authSwitchLink.textContent = isLogin ? '去注册' : '去登录';
     }
 
     if (elements.authMessage) {
@@ -645,6 +664,13 @@ function setupEventListeners() {
         elements.showRegisterTab.addEventListener('click', () => switchAuthTab('register'));
     }
 
+    if (elements.authSwitchLink) {
+        elements.authSwitchLink.addEventListener('click', () => {
+            const isLoginVisible = elements.loginPanel?.style.display !== 'none';
+            switchAuthTab(isLoginVisible ? 'register' : 'login');
+        });
+    }
+
     if (elements.loginBtn) {
         elements.loginBtn.addEventListener('click', async () => {
             const username = elements.loginUsername?.value?.trim() || '';
@@ -731,13 +757,16 @@ function setupEventListeners() {
     if (switchAccountBtn) {
         switchAccountBtn.addEventListener('click', () => {
             if (elements.profileMenu) elements.profileMenu.classList.remove('show');
-            window.logout?.();
-            state.currentUser = null;
-            state.messages = [];
-            resetSessionId();
-            showAuthScreen('请重新登录');
+            showAuthScreen('可切换账号登录；若不切换可点击“返回当前页面”。');
             switchAuthTab('login');
-            showToast('已切换账号', 'success');
+            showToast('已打开账号切换', 'success');
+        });
+    }
+
+    if (elements.authBackBtn) {
+        elements.authBackBtn.addEventListener('click', () => {
+            showAppScreen();
+            showToast('已返回当前页面', 'success');
         });
     }
 
@@ -1019,10 +1048,17 @@ window.addEventListener("resize", function () {
     }
 });
 
-window.addEventListener('DOMContentLoaded', async () => {
+async function bootstrapLegacyApp() {
+    if (window.__legacyBootstrapped) {
+        return;
+    }
+    window.__legacyBootstrapped = true;
+
     setupEventListeners();
 
-    const token = window.getToken?.();
+    const token = (typeof window.getToken === 'function')
+        ? window.getToken()
+        : (localStorage.getItem('rag_token') || '');
     if (!token) {
         updateProfileUI(null);
         showAuthScreen();
@@ -1038,4 +1074,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         showAuthScreen('登录已失效，请重新登录');
         switchAuthTab('login');
     }
-});
+}
+
+window.__bootstrapLegacyApp = bootstrapLegacyApp;

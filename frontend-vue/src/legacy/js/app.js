@@ -1,4 +1,3 @@
-// 模块化基础设施占位入口
 import './utils.js';
 import './api.js';
 import './modules/modal.js';

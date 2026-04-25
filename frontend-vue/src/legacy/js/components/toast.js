@@ -10,5 +10,4 @@ function showToast(message, type = 'success') {
     }, 2200);
 }
 
-// 挂到 window 上供原 script.js 使用
 window.showToast = showToast;

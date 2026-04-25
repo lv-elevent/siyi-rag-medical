@@ -20,7 +20,6 @@ async function sendMessage() {
 
         await window.askQuestionToBackendStream(message);
 
-        // 流式完成后刷新左侧历史，拿到后端自动生成的标题
         if (window.fetchSessions && window.renderSessionList) {
             const sessions = await window.fetchSessions();
             window.renderSessionList(sessions);
@@ -49,6 +48,10 @@ async function askQuestionToBackendStream(question) {
     }
 
     window.state.isStreaming = true;
+    const aiMessageId = window.addMessage('', 'ai');
+    window.updateMessage(aiMessageId, '🤔 思考中...', null, false, true);
+    window.setMessageThinking?.(aiMessageId, true);
+    window.setMessageStreaming?.(aiMessageId, false);
 
     const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -59,7 +62,6 @@ async function askQuestionToBackendStream(question) {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream',
                 'X-Request-Id': requestId,
-                // 仅新增：自动携带登录Token鉴权
                 ...window.getAuthHeaders()
             },
             body: JSON.stringify({
@@ -86,12 +88,25 @@ async function askQuestionToBackendStream(question) {
             throw new Error("流式响应失败");
         }
 
-        const aiMessageId = window.addMessage('正在思考...', 'ai');
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
 
         let buffer = "";
-        let accumulatedText = "";
+        let fullText = "";
+        let streamBuffer = "";
+        let lastUpdate = Date.now();
+        let thinkingActive = true;
+        let streamDone = false;
+
+        const flushMarkdownRender = (force = false) => {
+            if (!streamBuffer) return;
+            const now = Date.now();
+            if (!force && now - lastUpdate < 50) return;
+            fullText += streamBuffer;
+            streamBuffer = "";
+            lastUpdate = now;
+            window.updateMessage(aiMessageId, fullText, null, true);
+        };
 
         while (true) {
             let done, value;
@@ -117,34 +132,70 @@ async function askQuestionToBackendStream(question) {
                 const payload = part.slice(6).trim();
 
                 if (payload === "[DONE]") {
+                    flushMarkdownRender(true);
+                    streamDone = true;
                     break;
                 }
 
                 try {
                     const data = JSON.parse(payload);
 
-                    if (data.type === "chunk") {
+                    if (data.type === "thinking_start") {
+                        thinkingActive = true;
+                        const thinkingText = data.data || "🤔 思考中...";
+                        window.updateMessage(aiMessageId, thinkingText, null, false, true);
+                        window.setMessageThinking?.(aiMessageId, true);
+                        window.setMessageStreaming?.(aiMessageId, false);
+                    } else if (data.type === "thinking_end") {
+                        thinkingActive = false;
+                        window.setMessageThinking?.(aiMessageId, false);
+                    } else if (data.type === "chunk") {
                         const chunk = data.data || "";
-                        accumulatedText = `${accumulatedText}${chunk}`;
-                        window.updateMessage(aiMessageId, accumulatedText, null, true);
+                        streamBuffer += chunk;
+                        if (thinkingActive) {
+                            thinkingActive = false;
+                            window.setMessageThinking?.(aiMessageId, false);
+                        }
+                        window.setMessageStreaming?.(aiMessageId, true);
+                        flushMarkdownRender(false);
                     } else if (data.type === "message") {
+                        flushMarkdownRender(true);
+                        if (thinkingActive) {
+                            thinkingActive = false;
+                            window.setMessageThinking?.(aiMessageId, false);
+                        }
+                        window.setMessageStreaming?.(aiMessageId, false);
                         window.updateMessage(aiMessageId, data.data || "系统消息", null, false, true);
                     } else if (data.type === "followup") {
+                        flushMarkdownRender(true);
+                        if (thinkingActive) {
+                            thinkingActive = false;
+                            window.setMessageThinking?.(aiMessageId, false);
+                        }
+                        window.setMessageStreaming?.(aiMessageId, false);
                         const followupText = data.data?.question || "请补充更多信息。";
                         window.updateMessage(aiMessageId, followupText, null, false, true);
                     } else if (data.type === "sources") {
+                        console.info("[sources_debug][frontend.receive] event_type=sources payload=", data.data);
+                        console.info("[sources_debug][frontend.receive] render_field=message.sources via updateMessage(source=array)");
                         window.updateMessage(aiMessageId, null, data.data || [], false, false);
                     }
                 } catch (e) {
                     console.warn("解析流数据失败:", e);
                 }
             }
+
+            if (streamDone) {
+                break;
+            }
         }
+        flushMarkdownRender(true);
     } finally {
+        window.setMessageThinking?.(aiMessageId, false);
+        window.setMessageStreaming?.(aiMessageId, false);
         window.state.isStreaming = false;
     }
 }
 
-// 挂到 window 上供原 script.js 使用
 window.sendMessage = sendMessage;
 window.askQuestionToBackendStream = askQuestionToBackendStream;

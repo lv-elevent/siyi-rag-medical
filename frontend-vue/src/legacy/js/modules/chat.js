@@ -1,5 +1,28 @@
 let renderScheduled = false;
 
+function normalizeAnswerMarkdown(rawText = "") {
+    let text = String(rawText || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n");
+
+    // 压缩标题与正文之间的过大空行
+    text = text.replace(/(^|\n)(#{1,6}[^\n]*)\n{2,}/g, "$1$2\n");
+
+    // 去掉行首孤立的 **（未闭合加粗）造成的异常显示
+    text = text
+        .split("\n")
+        .map((line) => {
+            const trimmed = line.trimStart();
+            if (trimmed.startsWith("**") && trimmed.indexOf("**", 2) === -1) {
+                return line.replace("**", "");
+            }
+            return line;
+        })
+        .join("\n");
+
+    return text.trim();
+}
+
 function updateMessage(id, content = null, source = null, replaceContent = false, forceReplace = false) {
     const msg = window.state.messages.find(m => m.id === id);
     if (!msg) return;
@@ -10,6 +33,8 @@ function updateMessage(id, content = null, source = null, replaceContent = false
         } else {
             msg.content += content;
         }
+        const compactContent = String(msg.content || "").replace(/\s+/g, "");
+        msg.isThinking = compactContent.includes("🤔思考中");
     }
 
     if (source) {
@@ -39,12 +64,42 @@ function updateMessage(id, content = null, source = null, replaceContent = false
     }
 }
 
+function setMessageThinking(id, isThinking) {
+    const msg = window.state.messages.find(m => m.id === id);
+    if (!msg) return;
+    msg.isThinking = Boolean(isThinking);
+
+    if (!renderScheduled) {
+        renderScheduled = true;
+        requestAnimationFrame(() => {
+            window.renderMessages(id);
+            renderScheduled = false;
+        });
+    }
+}
+
+function setMessageStreaming(id, isStreaming) {
+    const msg = window.state.messages.find(m => m.id === id);
+    if (!msg) return;
+    msg.isStreaming = Boolean(isStreaming);
+
+    if (!renderScheduled) {
+        renderScheduled = true;
+        requestAnimationFrame(() => {
+            window.renderMessages(id);
+            renderScheduled = false;
+        });
+    }
+}
+
 function addMessage(content, role) {
+    const compactContent = String(content || "").replace(/\s+/g, "");
     const message = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         role,
         content: content || '',
-        sources: []
+        sources: [],
+        isThinking: role === "ai" && compactContent.includes("🤔思考中")
     };
 
     window.state.messages.push(message);
@@ -64,44 +119,64 @@ function addMessage(content, role) {
 }
 
 function buildSourceHTML(sources = []) {
+    console.info("[sources_debug][frontend.render] input_message_sources=", sources);
     const groupedSources = window.groupSourcesByFile(sources);
+    console.info("[sources_debug][frontend.render] grouped_by_filename=", groupedSources);
     if (!groupedSources.length) return "";
 
     return `
-        <div class="message-source">
-            <div class="source-title">📚 参考来源</div>
-            <div class="source-list">
-                ${groupedSources.map(item => `
-                    <div class="source-item">
-                        <span class="source-file" title="${window.escapeHtml(item.filename)}">
-                            📄 ${window.escapeHtml(item.filename)}
-                        </span>
-                        <span class="source-chunk">第${item.chunks.join('、')}段</span>
-                    </div>
-                `).join("")}
-            </div>
+        <div class="sources">
+            ${groupedSources.map(item => {
+                const chunkText = (item.chunks || []).slice(0, 3).map(chunk => `第${chunk}段`).join("、");
+                const label = chunkText ? `${item.filename}（${chunkText}）` : item.filename;
+                return `<span class="source-tag" title="${window.escapeHtml(label)}">📄 ${window.escapeHtml(label)}</span>`;
+            }).join("")}
         </div>
     `;
 }
 
 function buildMessageInnerHTML(msg) {
     if (msg.role === "ai") {
-
         const isStreaming = msg.isStreaming === true;
+        const rawContent = String(msg.content || "");
+        const compactContent = rawContent.replace(/\s+/g, "");
+        const isThinking = msg.isThinking === true || compactContent.includes("🤔思考中");
 
-        const formattedContent = isStreaming
-            ? window.formatText(msg.content || "")
-            : window.marked.parse(
-                (msg.content || "")
-                    .replace(/\n{3,}/g, '\n\n')
-                    .trim()
+        if (isThinking) {
+            return `
+                <div class="ai-message-wrap">
+                    <div class="ai-avatar">思医</div>
+                    <div class="message-bubble thinking-bubble-wrap">
+                        <div class="thinking-inline" aria-live="polite">
+                            <span class="thinking-emoji">🤔</span>
+                            <span class="thinking-text">思考中</span>
+                            <span class="thinking-dots" aria-hidden="true">
+                                <i></i><i></i><i></i>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        let formattedContent = window.formatText(rawContent);
+        try {
+            formattedContent = window.marked.parse(
+                normalizeAnswerMarkdown(rawContent)
             );
+        } catch (_) {
+            // Fallback to plain text when partial markdown is malformed mid-stream.
+            formattedContent = window.formatText(rawContent);
+        }
+        const contentClass = isStreaming
+            ? "message-content chat-content ai-message-content streaming-message"
+            : "message-content chat-content ai-message-content";
 
         return `
             <div class="ai-message-wrap">
                 <div class="ai-avatar">思医</div>
                 <div class="message-bubble">
-                    <div class="message-content">${formattedContent}</div>
+                    <div class="${contentClass}">${formattedContent}</div>
                     ${msg.sources && msg.sources.length > 0 ? buildSourceHTML(msg.sources) : ""}
                 </div>
             </div>
@@ -110,7 +185,7 @@ function buildMessageInnerHTML(msg) {
 
     return `
         <div class="message-bubble">
-            <div class="message-content">${window.formatText(msg.content || "")}</div>
+            <div class="message-content chat-content user-message-content">${window.formatText(msg.content || "")}</div>
         </div>
     `;
 }
@@ -163,7 +238,10 @@ function hideWelcomeCard() {
 
 function addWelcomeMessage() {
     if (window.state.messages.length > 0) return;
-    window.addMessage("您好，我是您的智能医疗助手「思医」\n\n您可以向我咨询疾病知识、用药建议或结合知识库进行问答。", "ai");
+    window.addMessage(
+        "您好，我是思医。\n\n我支持上传医学文档、构建医疗知识库，并基于知识库进行问答与来源追溯，帮助医学学习和知识查询。",
+        "ai"
+    );
 }
 
 function resetChat() {
@@ -171,8 +249,9 @@ function resetChat() {
     window.renderMessages();
 }
 
-// 挂到 window 上供原 script.js 使用
 window.updateMessage = updateMessage;
+window.setMessageThinking = setMessageThinking;
+window.setMessageStreaming = setMessageStreaming;
 window.addMessage = addMessage;
 window.buildSourceHTML = buildSourceHTML;
 window.buildMessageInnerHTML = buildMessageInnerHTML;
