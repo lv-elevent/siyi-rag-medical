@@ -6,7 +6,6 @@ from backend.core.logger_config import setup_logger
 from backend.core.security import get_current_user
 from backend.models.knowledge import DeleteDocumentRequest, DeleteDocumentResponse
 from backend.repositories.vector_repository import vector_repository
-from backend.services.knowledge_registry import registry_delete, load_registry
 from backend.database.session import get_db
 from backend.database.models import Document, DocumentChunk, KnowledgeBaseDocument
 
@@ -44,27 +43,14 @@ async def delete_document(
         )
 
     try:
-        # 1) 通过 registry 解析向量 document_id（doc_xxx），兼容历史数据
-        document_id_str = str(document_id)
-        vector_document_id = document_id_str
-        registry = load_registry()
-        for metadata in registry.values():
-            if metadata.get("user_id") != current_user.id:
-                continue
-            if str(metadata.get("doc_id")) == document_id_str:
-                vector_document_id = str(metadata.get("document_id") or document_id_str)
-                break
-
-        # 2) 删除向量库
+        # 1) 删除向量库（doc.id 即为向量 document_id 的组成部分）
+        vector_document_id = f"doc_{doc.id}"
         deleted_count = vector_repository.delete_by_document_id(
             document_id=vector_document_id,
             user_id=current_user.id,
         )
 
-        # 3) 删除 registry
-        registry_deleted = registry_delete(vector_document_id, user_id=current_user.id)
-
-        # 4) 先删依赖子表，避免 ORM 把外键置空触发 NOT NULL 错误
+        # 2) 先删依赖子表，避免 ORM 把外键置空触发 NOT NULL 错误
         db.query(KnowledgeBaseDocument).filter(
             KnowledgeBaseDocument.document_id == doc.id,
             KnowledgeBaseDocument.user_id == current_user.id,
@@ -75,20 +61,17 @@ async def delete_document(
             DocumentChunk.user_id == current_user.id,
         ).delete(synchronize_session=False)
 
-        # 5) 删除本地上传文件（硬删除）
+        # 3) 删除本地上传文件（硬删除）
         if doc.file_path and os.path.exists(doc.file_path):
             os.remove(doc.file_path)
 
-        # 6) 再删主表 document
+        # 4) 再删主表 document
         db.delete(doc)
         db.commit()
 
         logger.info(
-            "[delete] 文档删除完成 document_id=%s vector_document_id=%s deleted_chunks=%s registry_deleted=%s",
-            document_id,
-            vector_document_id,
-            deleted_count,
-            registry_deleted
+            "[delete] 文档删除完成 doc_id=%s vector_document_id=%s deleted_chunks=%s",
+            document_id, vector_document_id, deleted_count,
         )
 
         return DeleteDocumentResponse(

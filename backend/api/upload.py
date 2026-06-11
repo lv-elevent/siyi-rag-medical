@@ -1,23 +1,18 @@
-from uuid import uuid4
 import os
+import hashlib
 import logging
 
 from backend.core import config
 from fastapi import APIRouter, File, HTTPException, UploadFile, status, Depends, Form
 
 from backend.models.upload import UploadResponse
-from backend.api.knowledge_status import set_knowledge_status_for_user
 from backend.services.document_processor import process_document
-from backend.services.knowledge_registry import (
-    calculate_file_hash_from_bytes,
-    registry_get,
-    registry_delete,
-)
 from backend.core.security import get_current_user
 from backend.database.session import get_db
-from backend.database.models import KnowledgeBase, Document
+from backend.database.models import Document
 from backend.services.knowledge_service import (
     get_or_create_default_kb,
+    get_or_resolve_kb,
     create_document,
     update_document_status,
     create_chunks,
@@ -67,56 +62,61 @@ async def upload_file(
         contents = await file.read()
 
         # =========================
-        # 3️⃣ 计算 hash（去重）
+        # 3️⃣ 计算 hash（去重 — 直接查 MySQL）
         # =========================
-        file_hash = calculate_file_hash_from_bytes(contents)
-        existing_doc = registry_get(file_hash, user_id=current_user.id) if not force_upload else None
-        logger.info("[upload] hash=%s exists=%s", file_hash, bool(existing_doc))
-        document_deleted = False
-        if existing_doc:
-            doc_db_id = existing_doc.get("doc_id")
-            db_doc = None
-            if doc_db_id is not None:
-                try:
-                    db_doc = (
-                        db.query(Document)
-                        .filter(
-                            Document.id == int(doc_db_id),
-                            Document.user_id == current_user.id,
-                        )
-                        .first()
-                    )
-                except (TypeError, ValueError):
-                    db_doc = None
+        file_hash = hashlib.sha256(contents).hexdigest()
 
-            document_deleted = db_doc is None
-
-            if not document_deleted:
-                logger.info(f"[upload] 文件已存在，document_id={existing_doc['document_id']}")
+        if not force_upload:
+            existing_doc = (
+                db.query(Document)
+                .filter(
+                    Document.file_hash == file_hash,
+                    Document.user_id == current_user.id,
+                )
+                .first()
+            )
+            if existing_doc:
+                logger.info("[upload] 文件已存在 doc_id=%s", existing_doc.id)
                 return UploadResponse(
-                    document_id=existing_doc["document_id"],
-                    filename=existing_doc["filename"],
+                    document_id=f"doc_{existing_doc.id}",
+                    filename=existing_doc.filename,
                     status="success",
                     message="文件已存在，直接使用已有知识库",
                 )
-
-            # registry 命中但 DB 文档已删除：清理旧映射并允许重传
-            old_vector_doc_id = existing_doc.get("document_id")
-            if old_vector_doc_id:
-                registry_delete(old_vector_doc_id, user_id=current_user.id)
-        logger.info("[upload] document_deleted=%s", document_deleted)
+        logger.info("[upload] hash=%s", file_hash[:16])
 
         # =========================
-        # 4️⃣ 保存文件
+        # 4️⃣ 先创建 DB 记录（获取 ID 用于文件命名和向量 ID）
         # =========================
-        document_id = f"doc_{uuid4().hex[:8]}"
-        saved_filename = f"{document_id}_{file.filename}"
+        kb = get_or_resolve_kb(db, knowledge_base_id, current_user)
+
+        document = create_document(
+            db, kb,
+            filename=file.filename,
+            file_path="",  # 稍后更新
+            file_hash=file_hash,
+            file_size=len(contents),
+        )
+        vector_document_id = f"doc_{document.id}"
+
+        global_kb = get_or_create_default_kb(db, current_user)
+        ensure_document_link(db, global_kb.id, document.id, current_user.id)
+        ensure_document_link(db, kb.id, document.id, current_user.id)
+
+        # =========================
+        # 5️⃣ 保存文件到磁盘
+        # =========================
+        saved_filename = f"{vector_document_id}_{file.filename}"
         file_path = os.path.join(UPLOAD_DIR, saved_filename)
 
         with open(file_path, "wb") as f:
             f.write(contents)
 
-        logger.info(f"[upload] 文件上传成功: {file.filename}")
+        # 更新文件路径
+        document.file_path = file_path
+        db.commit()
+
+        logger.info(f"[upload] 文件保存完成: {file.filename}")
 
     except Exception as exc:
         logger.error(f"[upload] 文件处理失败: {str(exc)}", exc_info=True)
@@ -126,40 +126,16 @@ async def upload_file(
         )
 
     # =========================
-    # 5️⃣ 文档处理（解析+embedding+入库）
+    # 6️⃣ 文档处理（解析+embedding+入库）
     # =========================
     try:
         logger.info(f"[upload] 开始处理文档: {file.filename}")
 
-        if knowledge_base_id is not None:
-            kb = (
-                db.query(KnowledgeBase)
-                .filter(
-                    KnowledgeBase.id == knowledge_base_id,
-                    KnowledgeBase.user_id == current_user.id,
-                )
-                .first()
-            )
-            if not kb:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="知识库不存在",
-                )
-        else:
-            # 获取或创建用户的默认知识库
-            kb = get_or_create_default_kb(db, current_user)
-
-        # 在数据库中创建 document（processing）
-        document = create_document(db, kb, filename=file.filename, file_path=file_path)
-        global_kb = get_or_create_default_kb(db, current_user)
-        ensure_document_link(db, global_kb.id, document.id, current_user.id)
-        ensure_document_link(db, kb.id, document.id, current_user.id)
-
-        # 执行解析、分块、embedding 并写入向量库，传入用户/KB/文档 DB id 以便写入 metadata
+        # 执行解析、分块、embedding 并写入向量库
         process_result = process_document(
             file_path=file_path,
             filename=file.filename,
-            document_id=document_id,
+            document_id=vector_document_id,
             user_id=current_user.id,
             kb_id=kb.id,
             doc_db_id=document.id,
@@ -210,17 +186,9 @@ async def upload_file(
             detail=f"文档处理失败: {str(exc)}"
         )
 
-    # =========================
-    # 6️⃣ 更新知识库状态
-    set_knowledge_status_for_user(
-        user_id=current_user.id,
-        has_document=True,
-        filename=file.filename,
-        status="ready"
-    )
     # 7️⃣ 返回
     return UploadResponse(
-        document_id=document_id,
+        document_id=vector_document_id,
         filename=file.filename,
         status="success",
         message="上传成功",

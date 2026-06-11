@@ -1,12 +1,21 @@
 """
 医疗安全过滤器
 E阶段最终版：高风险拦截 + 内容修正 + 免责声明
+
+词表已统一迁移至 backend.core.medical_terms
 """
 
 import re
 import logging
 from typing import List, Tuple
- 
+
+from backend.core.medical_terms import (
+    HIGH_RISK_PATTERNS,
+    ABSOLUTE_DIAGNOSIS_PATTERNS,
+    SPECIFIC_DOSAGE_PATTERNS,
+    DANGEROUS_TREATMENT_PATTERNS,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,39 +28,6 @@ MEDICAL_DISCLAIMER = """
 EMERGENCY_WARNING = """
 \n\n🚨 紧急提醒：如出现呼吸困难、胸痛、意识模糊、抽搐等症状，请立即拨打 120 或尽快前往急诊。
 """
-
-
-# ================= 高风险关键词 =================
-
-HIGH_RISK_PATTERNS = [
-    r'胸痛',
-    r'呼吸困难',
-    r'意识模糊',
-    r'昏迷',
-    r'抽搐',
-    r'大出血',
-    r'心梗',
-    r'脑梗',
-    r'休克',
-    r'自杀',
-    r'轻生',
-]
-
-ABSOLUTE_DIAGNOSIS_PATTERNS = [
-    r'你(得了|患有|是|确诊为)\s*[\u4e00-\u9fa5]{2,10}',
-    r'确诊\s*为\s*[\u4e00-\u9fa5]+',
-]
-
-SPECIFIC_DOSAGE_PATTERNS = [
-    r'(每天|每次|顿服)\s*\d+\s*(片|粒|颗|克|毫升|mg|ml)',
-    r'(服用|吃)\s*\d+\s*(片|粒|颗|克|毫升|mg|ml)',
-]
-
-DANGEROUS_TREATMENT_PATTERNS = [
-    r'(建议|可以)\s*(直接|自己)\s*(做手术|开刀)',
-    r'(不用|不用去)\s*(医院|看医生)',
-    r'自己\s*(买药|吃药|治疗)',
-]
 
 
 # ================= E1：高风险预警 =================

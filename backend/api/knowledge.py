@@ -21,8 +21,7 @@ from backend.models.knowledge import (
     KnowledgeBaseListResponse,
     KnowledgeBaseDetailResponse,
 )
-from backend.services.knowledge_registry import load_registry, save_registry
-from backend.services.knowledge_service import get_or_create_default_kb, ensure_document_link
+from backend.services.knowledge_service import get_or_create_default_kb, get_user_kb_or_404, ensure_document_link
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -132,19 +131,7 @@ async def list_knowledge_base_files(
     current_user=Depends(get_current_user),
     db=Depends(get_db),
 ):
-    kb = (
-        db.query(KnowledgeBase)
-        .filter(
-            KnowledgeBase.id == knowledge_base_id,
-            KnowledgeBase.user_id == current_user.id,
-        )
-        .first()
-    )
-    if not kb:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="知识库不存在",
-        )
+    kb = get_user_kb_or_404(db, knowledge_base_id, current_user.id)
 
     _ensure_user_document_links(db, current_user)
     if (kb.name or "").strip() == "全库":
@@ -192,19 +179,7 @@ async def update_knowledge_base(
     current_user=Depends(get_current_user),
     db=Depends(get_db),
 ):
-    kb = (
-        db.query(KnowledgeBase)
-        .filter(
-            KnowledgeBase.id == knowledge_base_id,
-            KnowledgeBase.user_id == current_user.id,
-        )
-        .first()
-    )
-    if not kb:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="知识库不存在",
-        )
+    kb = get_user_kb_or_404(db, knowledge_base_id, current_user.id)
 
     if payload.name is not None:
         new_name = payload.name.strip()
@@ -283,16 +258,7 @@ async def remove_document_from_knowledge_base(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="knowledge_base_id 不能为空",
         )
-    kb = (
-        db.query(KnowledgeBase)
-        .filter(KnowledgeBase.id == int(current_kb_id), KnowledgeBase.user_id == current_user.id)
-        .first()
-    )
-    if not kb:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="知识库不存在",
-        )
+    kb = get_user_kb_or_404(db, int(current_kb_id), current_user.id)
     if (kb.name or "").strip() == "全库":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -333,19 +299,7 @@ async def delete_knowledge_base(
     db=Depends(get_db),
 ):
     # #endregion
-    kb = (
-        db.query(KnowledgeBase)
-        .filter(
-            KnowledgeBase.id == knowledge_base_id,
-            KnowledgeBase.user_id == current_user.id,
-        )
-        .first()
-    )
-    if not kb:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="知识库不存在",
-        )
+    kb = get_user_kb_or_404(db, knowledge_base_id, current_user.id)
 
     if (kb.name or "").strip() in {"默认知识库", "全库"}:
         raise HTTPException(
@@ -463,14 +417,7 @@ async def attach_document_to_knowledge_base(
     if not doc:
         raise HTTPException(status_code=404, detail="文档不存在")
 
-    kb = (
-        db.query(KnowledgeBase)
-        .filter(KnowledgeBase.id == int(knowledge_base_id), KnowledgeBase.user_id == current_user.id)
-        .first()
-    )
-    if not kb:
-        raise HTTPException(status_code=404, detail="知识库不存在")
-
+    kb = get_user_kb_or_404(db, int(knowledge_base_id), current_user.id)
     ensure_document_link(db, kb.id, doc.id, current_user.id)
     return {"status": "success", "message": "文档已加入知识库"}
 
@@ -479,14 +426,4 @@ async def attach_document_to_knowledge_base(
 async def clear_knowledge(current_user=Depends(get_current_user)):
     repo = VectorRepository()
     repo.collection.delete(where={"user_id": current_user.id})
-
-    registry = load_registry()
-    filtered_registry = {
-        key: meta
-        for key, meta in registry.items()
-        if meta.get("user_id") != current_user.id
-    }
-    if len(filtered_registry) != len(registry):
-        save_registry(filtered_registry)
-
     return {"status": "success", "message": "当前用户知识库已清空"}

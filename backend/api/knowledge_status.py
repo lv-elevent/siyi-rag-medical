@@ -1,71 +1,74 @@
+"""
+知识库状态 API
+
+状态查询统一走 MySQL，不再依赖内存 dict 或 JSON registry。
+"""
+
 from fastapi import APIRouter, HTTPException, status, Depends
 
 from backend.models.knowledge_status import KnowledgeStatusResponse
-from backend.services.knowledge_registry import registry_list
 from backend.core.security import get_current_user
+from backend.database.session import get_db
+from backend.database.models import Document
 
 router = APIRouter()
 
-# 按用户隔离的内存状态
-knowledge_state_by_user: dict[str, dict] = {}
-
-
-def set_knowledge_status_for_user(
-    user_id: int,
-    has_document: bool,
-    filename: str = "",
-    status: str = "empty"
-) -> None:
-    """
-    内部使用：按 user_id 更新知识库状态
-    """
-    knowledge_state_by_user[str(user_id)] = {
-        "has_document": has_document,
-        "filename": filename,
-        "status": status
-    }
-
-
-def get_knowledge_status_for_user(user_id: int) -> dict:
-    """
-    内部使用：按 user_id 获取知识库状态
-    """
-    return knowledge_state_by_user.get(
-        str(user_id),
-        {
-            "has_document": False,
-            "filename": "",
-            "status": "empty"
-        }
-    )
-
 
 @router.get("/knowledge/status", response_model=KnowledgeStatusResponse)
-async def get_knowledge_status(current_user=Depends(get_current_user)) -> KnowledgeStatusResponse:
-    """获取当前用户知识库状态"""
+async def get_knowledge_status(
+    current_user=Depends(get_current_user),
+    db=Depends(get_db),
+) -> KnowledgeStatusResponse:
+    """获取当前用户知识库状态（查最新文档）"""
     try:
-        state = get_knowledge_status_for_user(current_user.id)
-
+        doc = (
+            db.query(Document)
+            .filter(Document.user_id == current_user.id)
+            .order_by(Document.created_at.desc())
+            .first()
+        )
+        if doc:
+            return KnowledgeStatusResponse(
+                has_document=True,
+                filename=doc.filename,
+                status=doc.status,
+            )
         return KnowledgeStatusResponse(
-            has_document=state["has_document"],
-            filename=state["filename"],
-            status=state["status"]
+            has_document=False, filename="", status="empty",
         )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"获取知识库状态失败: {str(exc)}"
+            detail=f"获取知识库状态失败: {str(exc)}",
         )
 
 
 @router.get("/knowledge/files")
-async def get_knowledge_files(current_user=Depends(get_current_user)):
+async def get_knowledge_files(
+    current_user=Depends(get_current_user),
+    db=Depends(get_db),
+):
     """仅返回当前用户的知识库文件"""
     try:
-        files = registry_list(user_id=current_user.id)
-        return {"files": files}
+        docs = (
+            db.query(Document)
+            .filter(Document.user_id == current_user.id)
+            .order_by(Document.created_at.desc())
+            .all()
+        )
+        return {
+            "files": [
+                {
+                    "document_id": d.id,
+                    "filename": d.filename,
+                    "status": d.status,
+                    "created_at": d.created_at.isoformat() if d.created_at else None,
+                }
+                for d in docs
+            ]
+        }
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"服务器内部错误: {str(exc)}"
+            detail=f"服务器内部错误: {str(exc)}",
         )

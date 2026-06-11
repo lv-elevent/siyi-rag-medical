@@ -10,7 +10,7 @@ from backend.services.text_chunker import split_text_into_chunks
 from backend.core.embedding_client import embed_texts, EMBEDDING_MODEL
 from backend.core.logger_config import setup_logger
 from backend.repositories.vector_repository import vector_repository
-from backend.services.knowledge_registry import calculate_file_hash, registry_add
+import hashlib
 
 # logger
 _is_dev = os.getenv("ENVIRONMENT", "development") == "development"
@@ -160,24 +160,15 @@ def process_document(
             metadatas=safe_metadatas,
         )
 
-        # 6️⃣ registry
-        file_hash = calculate_file_hash(file_path)
+        # 6️⃣ 计算文件哈希（用于后续去重查询）
+        _file_hash = hashlib.sha256()
+        with open(file_path, "rb") as _f:
+            for _chunk in iter(lambda: _f.read(8192), b""):
+                _file_hash.update(_chunk)
+        file_hash = _file_hash.hexdigest()
 
-        registry_add(
-            file_hash=file_hash,
-            metadata={
-                "document_id": document_id,
-                "filename": filename,
-                "user_id": user_id,   
-                "kb_id": kb_id,
-                "doc_id": doc_db_id,
-                "total_chunks": len(safe_chunk_records),
-                "total_text_length": len(raw_text),
-                "created_at": datetime.now().isoformat()
-            }
-        )
-
-        logger.info("[document_processor] 文档处理完成")
+        # 元数据已通过 MySQL documents 表持久化，无需额外的 JSON registry
+        logger.info("[document_processor] 文档处理完成 file_hash=%s", file_hash[:16])
 
         return {
             "status": "success",

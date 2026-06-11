@@ -2,7 +2,38 @@ from typing import List
 from datetime import datetime
 from uuid import uuid4
 
+from fastapi import HTTPException, status
+
 from backend.database.models import KnowledgeBase, Document, DocumentChunk, KnowledgeBaseDocument
+
+
+# ============================================================
+# 知识库校验（全项目统一入口）
+# ============================================================
+
+def get_user_kb_or_404(db, kb_id: int, user_id: int) -> KnowledgeBase:
+    """查询知识库，不存在或不属于当前用户则 404"""
+    kb = (
+        db.query(KnowledgeBase)
+        .filter(
+            KnowledgeBase.id == kb_id,
+            KnowledgeBase.user_id == user_id,
+        )
+        .first()
+    )
+    if not kb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="知识库不存在",
+        )
+    return kb
+
+
+def get_or_resolve_kb(db, kb_id: int | None, user) -> KnowledgeBase:
+    """有 id 则校验返回，没有则返回用户的默认'全库'"""
+    if kb_id is not None:
+        return get_user_kb_or_404(db, kb_id, user.id)
+    return get_or_create_default_kb(db, user)
 
 
 def get_or_create_default_kb(db, user):
@@ -46,18 +77,51 @@ def get_or_create_default_kb(db, user):
     return kb
 
 
-def get_or_create_global_kb(db, user):
-    return get_or_create_default_kb(db, user)
+def get_kb_allowed_doc_ids(db, user_id: int, knowledge_base_id: int) -> list[int]:
+    """获取指定知识库下所有文档的 ID 列表（'全库'返回该用户全部文档）"""
+    kb = db.query(KnowledgeBase).filter(
+        KnowledgeBase.id == knowledge_base_id,
+        KnowledgeBase.user_id == user_id,
+    ).first()
+
+    if kb and (kb.name or "").strip() == "全库":
+        return [int(x[0]) for x in db.query(Document.id).filter(Document.user_id == user_id).all()]
+
+    # 确保旧数据的关联关系已建立
+    docs = db.query(Document).filter(Document.user_id == user_id).all()
+    for doc in docs:
+        if doc.knowledge_base_id:
+            ensure_document_link(db, doc.knowledge_base_id, doc.id, user_id)
+
+    rows = (
+        db.query(KnowledgeBaseDocument.document_id)
+        .filter(
+            KnowledgeBaseDocument.user_id == user_id,
+            KnowledgeBaseDocument.knowledge_base_id == knowledge_base_id,
+        )
+        .all()
+    )
+    return [int(r[0]) for r in rows if r and r[0] is not None]
 
 
-def create_document(db, kb: KnowledgeBase, filename: str, file_path: str) -> Document:
+def create_document(
+    db,
+    kb: KnowledgeBase,
+    filename: str,
+    file_path: str,
+    file_hash: str = "",
+    file_size: int | None = None,
+) -> Document:
     doc = Document(
         knowledge_base_id=kb.id,
         user_id=kb.user_id,
         filename=filename,
         file_path=file_path,
+        file_hash=file_hash,
+        file_size=file_size,
+        file_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf",
         status="processing",
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
     db.add(doc)
     db.commit()

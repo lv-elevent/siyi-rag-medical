@@ -15,6 +15,15 @@ from backend.services.retrieval_service import semantic_search
 from backend.core.llm_client import generate_answer_with_llm
 from backend.services.safety_guard import safety_filter
 from backend.services.agent.memory import memory_manager, ConversationTurn
+from backend.core.medical_terms import (
+    VAGUE_QUESTION,
+    PRONOUN,
+    CONTEXTUAL_MARKER,
+    INVALID_QUERY_PATTERNS,
+    GENERIC_HISTORY_QUESTION,
+    SHORT_MEDICAL,
+    FOLLOWUP_TRIGGER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,43 +50,14 @@ class MedicalAgent:
     query classification → query rewrite → retrieval → answer generation → safety guard
     """
 
-    VAGUE_QUESTIONS = {
-        "怎么办", "怎么处理", "怎么治疗", "严重吗",
-        "要紧吗", "吃什么药", "怎么用药", "该怎么办",
-        "需要住院吗", "会传染吗", "危险吗", "能治好吗"
-    }
-
-    PRONOUN_PATTERNS = {
-        "这个", "那个", "这种", "那种", "它", "他", "她", "这里", "那里"
-    }
-
-    CONTEXTUAL_MARKERS = {
-        "这个", "那个", "这种", "那种", "它",
-        "严重吗", "怎么办", "会传染吗",
-        "危险吗", "吃什么药",
-        "怎么防范", "怎么预防", "怎么治疗"
-    }
-
-    INVALID_PATTERNS = {
-        "天气", "你好", "你是谁", "几点", "今天几号",
-        "讲个笑话", "翻译", "写代码"
-    }
-
-    GENERIC_HISTORY_QUESTIONS = {
-        "怎么办", "严重吗"
-    }
-    SHORT_MEDICAL_TERMS = {
-        "解剖学", "局部解剖学", "系统解剖学",
-        "药理学", "生理学", "病理学", "免疫学", "微生物学", "组织学",
-        "高血压", "糖尿病", "冠心病", "肺炎", "胃炎", "哮喘", "感冒",
-        "头痛", "发热", "咳嗽", "腹泻", "胸闷", "失眠",
-        "布洛芬", "阿司匹林", "阿莫西林", "头孢", "胰岛素",
-    }
-    FOLLOWUP_TRIGGERS = {
-        "怎么办", "严重吗", "危险吗", "会传染吗",
-        "这个", "那个", "这种", "那种", "它",
-        "吃什么药", "需要住院吗"
-    }
+    # ── 引用统一词表（全项目唯一来源）──
+    VAGUE_QUESTIONS = VAGUE_QUESTION
+    PRONOUN_PATTERNS = PRONOUN
+    CONTEXTUAL_MARKERS = CONTEXTUAL_MARKER
+    INVALID_PATTERNS = INVALID_QUERY_PATTERNS
+    GENERIC_HISTORY_QUESTIONS = GENERIC_HISTORY_QUESTION
+    SHORT_MEDICAL_TERMS = SHORT_MEDICAL
+    FOLLOWUP_TRIGGERS = FOLLOWUP_TRIGGER
 
     def prepare(
         self,
