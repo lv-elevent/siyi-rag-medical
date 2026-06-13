@@ -67,6 +67,7 @@ class MedicalAgent:
         user_id: Optional[int] = None,
         knowledge_base_id: Optional[int] = None,
         allowed_doc_ids: Optional[List[int]] = None,
+        db=None,
     ) -> AgentPrepareResult:
         logger.info("[medical-agent] prepare start")
 
@@ -109,7 +110,11 @@ class MedicalAgent:
                 error_message="知识库未收录相关内容，你可以上传相关文档。"
             )
 
-        history, history_turns = self._load_history(session_id)
+        history, history_turns = self._load_history(
+            session_id,
+            user_id=user_id,
+            db=db,
+        )
 
         followup_result = self._analyze_followup_need(question, history, query_type)
         if followup_result["needs_followup"]:
@@ -178,7 +183,9 @@ class MedicalAgent:
         full_context = self._build_full_context(
             matched_results,
             history,
-            question
+            question,
+            session_id=session_id or "",
+            user_id=user_id,
         )
 
         logger.info(
@@ -210,6 +217,7 @@ class MedicalAgent:
         user_id: Optional[int] = None,
         knowledge_base_id: Optional[int] = None,
         allowed_doc_ids: Optional[List[int]] = None,
+        db=None,
     ) -> ChatResponse:
         logger.info("[medical-agent] process 启动")
 
@@ -220,6 +228,7 @@ class MedicalAgent:
             user_id=user_id,
             knowledge_base_id=knowledge_base_id,
             allowed_doc_ids=allowed_doc_ids,
+            db=db,
         )
 
         if prepare_result.status == "error":
@@ -294,7 +303,8 @@ class MedicalAgent:
                 question=prepare_result.question,
                 answer=answer_body,
                 query_type=prepare_result.query_type,
-                sources=prepare_result.sources
+                sources=prepare_result.sources,
+                user_id=user_id,
             )
 
         return self._build_chat_response(
@@ -367,13 +377,24 @@ class MedicalAgent:
 
     def _load_history(
         self,
-        session_id: Optional[str]
+        session_id: Optional[str],
+        user_id: Optional[int] = None,
+        db=None,
     ) -> Tuple[List[ConversationTurn], int]:
         if not session_id:
             return [], 0
 
         history = memory_manager.get_session_history(session_id)
         history_turns = len(history)
+
+        # 冷启动恢复：如果内存/Redis 中没有数据，尝试从 MySQL 回填
+        if history_turns == 0 and db is not None and user_id is not None:
+            recovered = memory_manager.recover_from_db(session_id, user_id, db)
+            if recovered > 0:
+                history = memory_manager.get_session_history(session_id)
+                history_turns = len(history)
+                logger.info("[medical-agent] cold-start recovered %s turns from DB", history_turns)
+
         logger.info("[medical-agent] 读取历史对话: %s 轮", history_turns)
         return history, history_turns
 
@@ -641,22 +662,23 @@ class MedicalAgent:
         self,
         matched_results: List[Dict[str, Any]],
         history: List[ConversationTurn],
-        question: str = ""
+        question: str = "",
+        session_id: str = "",
+        user_id: int | None = None,
     ) -> str:
+        # ── RAG 知识库上下文 ──
         chunk_texts: List[str] = []
         for idx, item in enumerate(matched_results):
             text = item.get("text")
             if not isinstance(text, str):
                 text = str(text or "")
             text = text.strip()
-            logger.debug("[context_fix] chunk_index=%s text_len=%s", idx, len(text))
             if text:
                 chunk_texts.append(text)
 
         rag_context = "\n\n".join(chunk_texts).strip()
-        logger.debug("[context_fix] rag_context_len=%s", len(rag_context))
 
-        # 最小上下文保护：命中来源时，避免向 LLM 传入过短上下文
+        # 最小上下文保护
         if matched_results and len(rag_context) < 50:
             top_text = matched_results[0].get("text")
             if not isinstance(top_text, str):
@@ -664,34 +686,39 @@ class MedicalAgent:
             top_text = top_text.strip()
             if top_text:
                 rag_context = top_text
-                logger.warning(
-                    "[context_fix] rag_context too short, fallback top1 full text | top1_len=%s",
-                    len(rag_context)
-                )
                 while len(rag_context) < 50:
                     rag_context = f"{rag_context}\n{top_text}".strip()
-                logger.warning(
-                    "[context_fix] expanded short context using top1 text | expanded_len=%s",
-                    len(rag_context)
-                )
 
-        logger.debug("[context_fix] final_rag_context_len=%s", len(rag_context))
+        # ── 三层记忆上下文 ──
+        memory_block = ""
+        if session_id and user_id is not None:
+            try:
+                ctx = memory_manager.get_context_for_query(session_id, question, user_id)
+                memory_block = ctx.to_prompt_block()
+                if memory_block:
+                    logger.info(
+                        "[memory] context assembled | semantic=%s summary=%s recent=%s",
+                        len(ctx.semantic_memories),
+                        "yes" if ctx.summary else "no",
+                        len(ctx.recent_turns),
+                    )
+            except Exception as exc:
+                logger.warning("[memory] failed to get context: %s", exc)
 
-        if self._should_use_history(question, history):
-            history_context = self._format_history(history[-2:])
+        # ── 组装最终上下文 ──
+        parts: list[str] = []
+        if memory_block:
+            parts.append(memory_block)
+        if rag_context:
+            parts.append(f"【知识库内容】\n{rag_context}")
 
-            if history_context:
-                final_context = (
-                    f"【上一轮对话主题】\n"
-                    f"{history_context}\n\n"
-                    f"【知识库内容】\n"
-                    f"{rag_context}"
-                )
-                logger.debug("[context_fix] final_context_len=%s", len(final_context))
-                return final_context
+        final_context = "\n\n".join(parts) if parts else ""
 
-        logger.debug("[context_fix] final_context_len=%s", len(rag_context))
-        return rag_context
+        logger.debug(
+            "[context] final | rag_len=%s memory_len=%s total_len=%s",
+            len(rag_context), len(memory_block), len(final_context),
+        )
+        return final_context
 
     def _save_conversation_memory(
         self,
@@ -699,17 +726,28 @@ class MedicalAgent:
         question: str,
         answer: str,
         query_type: str,
-        sources: List[Dict[str, Any]]
+        sources: List[Dict[str, Any]],
+        user_id: int | None = None,
     ) -> None:
-        memory_manager.add_turn(
-            session_id,
-            ConversationTurn(
-                user_question=question,
-                assistant_answer=answer,
-                query_type=query_type,
-                sources=sources
-            )
+        turn = ConversationTurn(
+            user_question=question,
+            assistant_answer=answer,
+            query_type=query_type,
+            sources=sources,
         )
+        memory_manager.add_turn(session_id, turn)
+
+        # 每 5 轮触发一次语义记忆抽取（异步不会阻塞响应）
+        if memory_manager.should_extract(session_id) and user_id is not None:
+            try:
+                extracted = memory_manager.trigger_extraction(session_id, user_id)
+                if extracted:
+                    logger.info(
+                        "[memory] extracted %s memories for session=%s: %s",
+                        len(extracted), session_id, [e[:30] for e in extracted],
+                    )
+            except Exception as exc:
+                logger.warning("[memory] extraction skipped: %s", exc)
 
     def _should_fallback_empty_answer(self, answer_body: str) -> bool:
         if not answer_body:

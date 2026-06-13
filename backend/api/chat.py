@@ -189,6 +189,7 @@ async def chat(
             knowledge_base_id=retrieval_kb_id,
             allowed_doc_ids=allowed_doc_ids,
             document_id=request.document_id,
+            db=db,
         )
 
         # ── 后处理 ──
@@ -273,6 +274,7 @@ async def chat_stream(
                 knowledge_base_id=retrieval_kb_id,
                 allowed_doc_ids=allowed_doc_ids,
                 document_id=request.document_id,
+                db=db,
             ):
                 event_type = event.get("type", "")
                 event_data = event.get("data", "")

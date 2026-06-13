@@ -51,6 +51,7 @@ class ChatOrchestrator:
         knowledge_base_id: int | None = None,
         allowed_doc_ids: list[int] | None = None,
         document_id: str | None = None,
+        db=None,
     ) -> ChatResponse:
         """非流式问答"""
         route_type = self._route(question)
@@ -59,7 +60,7 @@ class ChatOrchestrator:
         return self._medical_response(
             question=question, user_id=user_id, session_id=session_id,
             knowledge_base_id=knowledge_base_id, allowed_doc_ids=allowed_doc_ids,
-            document_id=document_id,
+            document_id=document_id, db=db,
         )
 
     def execute_stream(
@@ -70,12 +71,13 @@ class ChatOrchestrator:
         knowledge_base_id: int | None = None,
         allowed_doc_ids: list[int] | None = None,
         document_id: str | None = None,
+        db=None,
     ):
         """流式问答 — 返回生成器"""
         return self._medical_stream(
             question=question, user_id=user_id, session_id=session_id,
             knowledge_base_id=knowledge_base_id, allowed_doc_ids=allowed_doc_ids,
-            document_id=document_id,
+            document_id=document_id, db=db,
         )
 
     # ── 路由 ──
@@ -121,6 +123,7 @@ class ChatOrchestrator:
         knowledge_base_id: int | None,
         allowed_doc_ids: list[int] | None,
         document_id: str | None,
+        db=None,
     ) -> ChatResponse:
         result = self.agent.process(
             question=question,
@@ -130,7 +133,10 @@ class ChatOrchestrator:
             user_id=user_id,
             knowledge_base_id=knowledge_base_id,
             allowed_doc_ids=allowed_doc_ids,
+            db=db,
         )
+        # process() 内部 _save_conversation_memory 是 agent 自动调用的
+        # 不需要在这里额外处理
         result.session_id = session_id
         return result
 
@@ -144,18 +150,16 @@ class ChatOrchestrator:
         knowledge_base_id: int | None,
         allowed_doc_ids: list[int] | None,
         document_id: str | None,
+        db=None,
     ):
-        """async generator: yields structured dicts {type, data}
-
-        Types: 'chunk' (token), 'message' (info/error), 'sources' (final),
-               'followup', 'done' (DONE signal with sources+safe_answer)
-        """
+        """async generator: yields structured dicts {type, data}"""
         import asyncio
 
         prepare_result = self.agent.prepare(
             question=question, document_id=document_id,
             session_id=session_id, user_id=user_id,
             knowledge_base_id=knowledge_base_id, allowed_doc_ids=allowed_doc_ids,
+            db=db,
         )
         logger.info(
             "[orchestrator:stream] status=%s query_type=%s sources=%s",
